@@ -96,7 +96,7 @@ export default function PreviewPanel({ result, isLoading, studentName, entryNumb
           />
           <div className="space-y-1">
             <p className="text-[12.5px] font-medium text-[var(--ink)]">Generating your logbook…</p>
-            <p className="text-[11px] text-[var(--ink-muted)]">Calling Claude API for Section A and C</p>
+            <p className="text-[11px] text-[var(--ink-muted)]">Calling Backend(Yes I couldnt think of anything better)</p>
           </div>
         </div>
 
@@ -215,9 +215,9 @@ export default function PreviewPanel({ result, isLoading, studentName, entryNumb
       >
         <div className="space-y-0.5">
           <p className="text-[11px] font-medium text-[var(--ink-dim)]">Generation complete</p>
-          <p className="font-mono text-[10.5px] text-[var(--ink-muted)]">
+          {/* <p className="font-mono text-[10.5px] text-[var(--ink-muted)]">
             {result!.token_usage.total_tokens} tokens · ≈${result!.token_usage.estimated_cost_usd.toFixed(4)}
-          </p>
+          </p> */}
         </div>
         <div className="flex gap-2">
           {result!.s3_info?.presigned_url && (

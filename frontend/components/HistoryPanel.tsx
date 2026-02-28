@@ -1,15 +1,25 @@
 "use client";
 
-import { LocalHistoryEntry, loadLocalHistory, downloadDocxFromBase64 } from "@/lib/api";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { HistoryEntry } from "@/lib/api";
 
-export default function HistoryPanel() {
-  const [entries, setEntries] = useState<LocalHistoryEntry[]>([]);
-  const [expanded, setExpanded] = useState<number | null>(null);
+interface Props {
+  entries: HistoryEntry[];
+  loading: boolean;
+}
 
-  useEffect(() => {
-    setEntries(loadLocalHistory());
-  }, []);
+export default function HistoryPanel({ entries, loading }: Props) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  if (loading) {
+    return (
+      <div className="space-y-2.5">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="section-card h-14 animate-pulse" style={{ opacity: 0.5 }} />
+        ))}
+      </div>
+    );
+  }
 
   if (entries.length === 0) {
     return (
@@ -38,14 +48,13 @@ export default function HistoryPanel() {
 
       {entries.map((entry, i) => (
         <div
-          key={entry.entry_number}
+          key={entry.id}
           className="section-card overflow-hidden animate-fade-up"
           style={{ animationDelay: `${i * 40}ms` }}
         >
-          {/* Header row */}
           <button
             className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--paper-warm)] transition-colors"
-            onClick={() => setExpanded(expanded === entry.entry_number ? null : entry.entry_number)}
+            onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}
           >
             <div className="flex items-center gap-3">
               <span
@@ -55,9 +64,7 @@ export default function HistoryPanel() {
                 {entry.entry_number}
               </span>
               <div className="text-left">
-                <p className="text-[12.5px] font-medium text-[var(--ink)]">
-                  Entry {entry.entry_number}
-                </p>
+                <p className="text-[12.5px] font-medium text-[var(--ink)]">Entry {entry.entry_number}</p>
                 <p className="font-mono text-[10.5px] text-[var(--ink-muted)]">
                   {entry.period_start} – {entry.period_end}
                 </p>
@@ -65,14 +72,14 @@ export default function HistoryPanel() {
             </div>
             <div className="flex items-center gap-2.5">
               <span className="font-mono text-[10px] text-[var(--ink-muted)]">
-                {new Date(entry.generated_at).toLocaleDateString("en-SG", { day: "numeric", month: "short" })}
+                {new Date(entry.created_at).toLocaleDateString("en-SG", { day: "numeric", month: "short" })}
               </span>
               <svg
                 width="11" height="11" viewBox="0 0 11 11" fill="none"
                 style={{
-                  transform: expanded === entry.entry_number ? "rotate(90deg)" : "rotate(0)",
+                  transform: expanded === entry.id ? "rotate(90deg)" : "rotate(0)",
                   transition: "transform 0.2s",
-                  color: "var(--ink-muted)"
+                  color: "var(--ink-muted)",
                 }}
               >
                 <path d="M3.5 2L7.5 5.5L3.5 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -80,19 +87,18 @@ export default function HistoryPanel() {
             </div>
           </button>
 
-          {/* Expanded content */}
-          {expanded === entry.entry_number && (
-            <div
-              className="px-4 pb-4 border-t animate-fade-up"
-              style={{ borderColor: "var(--border)" }}
-            >
+          {expanded === entry.id && (
+            <div className="px-4 pb-4 border-t animate-fade-up" style={{ borderColor: "var(--border)" }}>
               <div className="mt-3 space-y-3">
                 <div>
                   <p className="section-letter mb-1.5">Section A Preview</p>
-                  <p className="text-[12px] text-[var(--ink)] leading-relaxed line-clamp-4">
-                    {entry.section_a}
-                  </p>
+                  <p className="text-[12px] text-[var(--ink)] leading-relaxed line-clamp-4">{entry.section_a}</p>
                 </div>
+                {/* {entry.token_usage && (
+                  <p className="font-mono text-[10px] text-[var(--ink-muted)]">
+                    {entry.token_usage.total_tokens} tokens · ≈${entry.token_usage.estimated_cost_usd.toFixed(4)}
+                  </p>
+                )} */}
                 {entry.presigned_url && (
                   <a
                     href={entry.presigned_url}
@@ -104,7 +110,7 @@ export default function HistoryPanel() {
                       <path d="M6 1v6M3.5 5.5L6 8l2.5-2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
                       <path d="M1.5 9.5h9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
                     </svg>
-                    Download from S3
+                    Download .docx
                   </a>
                 )}
               </div>

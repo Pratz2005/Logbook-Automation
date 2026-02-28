@@ -301,7 +301,7 @@ def test_validation():
     print("TEST 5: Input validation")
     print("="*60)
 
-    from agent import validate_inputs
+    from orchestrator import validate_inputs
 
     # Missing field
     try:

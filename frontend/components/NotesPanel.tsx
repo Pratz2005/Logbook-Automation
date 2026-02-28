@@ -141,7 +141,7 @@ export default function NotesPanel({
         {showAdvanced && (
           <div className="mt-3 space-y-3 animate-fade-up">
             <p className="text-[11.5px] text-[var(--ink-muted)]">
-              Paste your previous logbook's Section A and C. Claude will match the writing style exactly.
+              Paste your previous logbook's Section A and C. The System will match the writing style exactly.
             </p>
             <div>
               <label className="field-label">Prior Section A</label>

@@ -1,25 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import MetadataPanel from "@/components/MetadataPanel";
 import NotesPanel from "@/components/NotesPanel";
 import PreviewPanel from "@/components/PreviewPanel";
 import HistoryPanel from "@/components/HistoryPanel";
+import LoginPanel from "@/components/LoginPanel";
 import {
   StudentMetadata,
   GenerateResponse,
+  HistoryEntry,
+  UserProfile,
   generateLogbook,
-  loadMetadata,
-  loadObjective,
-  saveObjective,
-  saveMetadata,
-  saveLocalHistory,
+  fetchProfile,
+  fetchHistory,
+  updateProfile,
 } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 
 type Tab = "input" | "preview" | "history";
 
 export default function Home() {
-  // ── State ──────────────────────────────────────────────────────
+  // ── Auth state ──────────────────────────────────────────────────
+  const [authReady, setAuthReady] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  // ── Form state ──────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<Tab>("input");
 
   const [metadata, setMetadata] = useState<Partial<StudentMetadata>>({
@@ -39,28 +45,112 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const inputRef = useRef<HTMLDivElement>(null);
+  // ── History state ───────────────────────────────────────────────
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
-  // ── Load persisted data ─────────────────────────────────────────
+  const inputRef = useRef<HTMLDivElement>(null);
+  const objectiveSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Load session and profile on mount ───────────────────────────
   useEffect(() => {
-    const saved = loadMetadata();
-    if (Object.keys(saved).length > 0) {
-      setMetadata(prev => ({ ...prev, ...saved }));
-    }
-    const obj = loadObjective();
-    if (obj) setObjective(obj);
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session) {
+        try {
+          const p = await fetchProfile();
+          applyProfile(p);
+        } catch {
+          // Session expired or invalid — sign out cleanly
+          await supabase.auth.signOut();
+        }
+      }
+      setAuthReady(true);
+    });
+
+    // Listen for auth changes (e.g. session expiry)
+    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        setProfile(null);
+        setHistory([]);
+      }
+    });
+
+    return () => listener.subscription.unsubscribe();
   }, []);
 
-  // Auto-save objective
-  useEffect(() => {
-    if (objective) saveObjective(objective);
-  }, [objective]);
+  const applyProfile = (p: UserProfile) => {
+    setProfile(p);
+    setMetadata(prev => ({
+      ...prev,
+      student_name: p.student_name,
+      matric_number: p.matric_number,
+      company: p.company,
+      supervisor: p.supervisor,
+    }));
+    setObjective(p.internship_objective || "");
+  };
 
-  // ── Generate ────────────────────────────────────────────────────
+  // ── Fetch history when logged in ─────────────────────────────────
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const { entries, count } = await fetchHistory();
+      setHistory(entries);
+      // Set entry number to count + 1 automatically
+      if (count > 0) {
+        const maxEntry = Math.max(...entries.map(e => e.entry_number));
+        setMetadata(prev => ({ ...prev, entry_number: maxEntry + 1 }));
+      }
+    } catch {
+      // Non-fatal
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (profile) loadHistory();
+  }, [profile, loadHistory]);
+
+  // ── Auto-save objective (debounced) ──────────────────────────────
+  useEffect(() => {
+    if (!profile || !objective) return;
+    if (objectiveSaveTimeout.current) clearTimeout(objectiveSaveTimeout.current);
+    objectiveSaveTimeout.current = setTimeout(() => {
+      updateProfile({ internship_objective: objective }).catch(() => {});
+    }, 1500);
+    return () => {
+      if (objectiveSaveTimeout.current) clearTimeout(objectiveSaveTimeout.current);
+    };
+  }, [objective, profile]);
+
+  // ── Login callback ────────────────────────────────────────────────
+  const handleLogin = (p: UserProfile) => {
+    applyProfile(p);
+    setAuthReady(true);
+  };
+
+  // ── Logout ────────────────────────────────────────────────────────
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setProfile(null);
+    setHistory([]);
+    setResult(null);
+    setObjective("");
+    setRawNotes("");
+    setPriorSectionA("");
+    setPriorSectionC("");
+    setMetadata({
+      student_name: "", matric_number: "", company: "",
+      supervisor: "", entry_number: 1,
+      period_start: "", period_end: "", submission_date: "",
+    });
+  };
+
+  // ── Generate ──────────────────────────────────────────────────────
   const handleGenerate = async () => {
     setError(null);
 
-    // Client-side validation
     const requiredMeta: (keyof StudentMetadata)[] = [
       "student_name", "matric_number", "company", "supervisor",
       "entry_number", "period_start", "period_end", "submission_date"
@@ -95,27 +185,12 @@ export default function Home() {
 
       setResult(response);
 
-      // Save to local history
-      saveLocalHistory({
-        entry_number: Number(metadata.entry_number),
-        period_start: String(metadata.period_start),
-        period_end: String(metadata.period_end),
-        generated_at: new Date().toISOString(),
-        section_a: response.section_a,
-        section_c: response.section_c,
-        presigned_url: response.s3_info?.presigned_url,
-        s3_key: response.s3_info?.s3_key,
-      });
-
-      // Update prior entries for next generation
+      // Update prior entries for next generation (style continuity)
       setPriorSectionA(response.section_a);
       setPriorSectionC(response.section_c);
 
-      // Bump entry number
-      setMetadata(prev => ({
-        ...prev,
-        entry_number: (Number(prev.entry_number) || 1) + 1,
-      }));
+      // Refresh history from DB
+      await loadHistory();
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "An unexpected error occurred.";
@@ -128,7 +203,24 @@ export default function Home() {
 
   const canGenerate = !isLoading && !!rawNotes.trim() && !!objective.trim();
 
-  // ── Render ──────────────────────────────────────────────────────
+  // ── Not ready yet ─────────────────────────────────────────────────
+  if (!authReady) {
+    return (
+      <div style={{ minHeight: "100vh", background: "var(--paper-cool)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div
+          className="w-8 h-8 rounded-full border-2 border-[var(--accent)] border-t-transparent"
+          style={{ animation: "spin-slow 0.8s linear infinite" }}
+        />
+      </div>
+    );
+  }
+
+  // ── Not logged in ─────────────────────────────────────────────────
+  if (!profile) {
+    return <LoginPanel onLogin={handleLogin} />;
+  }
+
+  // ── Main UI ───────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: "var(--paper-cool)" }}>
       {/* ── Top bar ── */}
@@ -164,26 +256,17 @@ export default function Home() {
               </svg>
             </div>
             <div>
-              <span
-                className="font-display font-semibold text-[var(--paper)] text-[13.5px]"
-                style={{ letterSpacing: "0.01em" }}
-              >
+              <span className="font-display font-semibold text-[var(--paper)] text-[13.5px]" style={{ letterSpacing: "0.01em" }}>
                 NTU Logbook
               </span>
-              <span
-                className="ml-2 text-[10.5px] font-light"
-                style={{ color: "rgba(245,240,232,0.45)", letterSpacing: "0.04em" }}
-              >
+              <span className="ml-2 text-[10.5px] font-light" style={{ color: "rgba(245,240,232,0.45)", letterSpacing: "0.04em" }}>
                 Generator
               </span>
             </div>
           </div>
 
           {/* Nav pills */}
-          <div
-            className="flex items-center gap-1 p-1 rounded-[20px]"
-            style={{ background: "rgba(255,255,255,0.07)" }}
-          >
+          <div className="flex items-center gap-1 p-1 rounded-[20px]" style={{ background: "rgba(255,255,255,0.07)" }}>
             {(["input", "preview", "history"] as Tab[]).map(tab => (
               <button
                 key={tab}
@@ -208,18 +291,36 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Generate button */}
-          <button
-            className="btn-accent flex items-center gap-2 text-[12.5px]"
-            style={{ padding: "7px 18px" }}
-            onClick={handleGenerate}
-            disabled={!canGenerate}
-          >
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-              <path d="M6.5 1.5L8.5 5.5H12L9 8l1 4-3.5-2.5L3 12l1-4L1 5.5h3.5z" stroke="white" strokeWidth="1.2" strokeLinejoin="round" fill="none"/>
-            </svg>
-            {isLoading ? "Generating…" : "Generate"}
-          </button>
+          {/* Right side: user info + generate */}
+          <div className="flex items-center gap-3">
+            <div className="text-right hidden sm:block">
+              <p className="text-[11px] font-medium text-[var(--paper)]">{profile.student_name}</p>
+              <p className="text-[10px]" style={{ color: "rgba(245,240,232,0.45)" }}>{profile.matric_number}</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="btn-secondary text-[11.5px] flex items-center gap-1.5"
+              style={{ color: "rgba(245,240,232,0.55)", background: "rgba(255,255,255,0.07)", border: "none" }}
+              title="Sign out"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M8 4l3 2.5-3 2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                <path d="M11 6.5H5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                <path d="M5 2H2a1 1 0 00-1 1v6a1 1 0 001 1h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+            </button>
+            <button
+              className="btn-accent flex items-center gap-2 text-[12.5px]"
+              style={{ padding: "7px 18px" }}
+              onClick={handleGenerate}
+              disabled={!canGenerate}
+            >
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                <path d="M6.5 1.5L8.5 5.5H12L9 8l1 4-3.5-2.5L3 12l1-4L1 5.5h3.5z" stroke="white" strokeWidth="1.2" strokeLinejoin="round" fill="none"/>
+              </svg>
+              {isLoading ? "Generating…" : "Generate"}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -235,14 +336,13 @@ export default function Home() {
           minHeight: "calc(100vh - 52px)",
         }}
       >
-        {/* LEFT: Input panel (hidden on mobile preview/history) */}
+        {/* LEFT: Input panel */}
         {(activeTab === "input" || activeTab === "preview") && (
           <div
             ref={inputRef}
             className="section-card p-5 animate-fade-up h-fit"
             style={{ position: "sticky", top: 72, maxHeight: "calc(100vh - 90px)", overflowY: "auto" }}
           >
-            {/* Error banner */}
             {error && (
               <div
                 className="mb-4 px-3 py-2.5 rounded-[4px] flex gap-2 animate-fade-up"
@@ -257,12 +357,10 @@ export default function Home() {
               </div>
             )}
 
-            {/* Metadata */}
-            <MetadataPanel value={metadata} onChange={setMetadata} />
+            <MetadataPanel value={metadata} onChange={setMetadata} profile={profile} />
 
             <hr className="rule-line mt-5" />
 
-            {/* Notes */}
             <div className="mt-5">
               <NotesPanel
                 rawNotes={rawNotes}
@@ -280,7 +378,6 @@ export default function Home() {
               />
             </div>
 
-            {/* Mobile generate */}
             <div className="mt-5">
               <button
                 className="btn-primary w-full flex items-center justify-center gap-2"
@@ -296,7 +393,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* RIGHT: Preview / History panel */}
+        {/* RIGHT: Preview / History */}
         <div className="min-w-0">
           {activeTab === "history" ? (
             <div className="section-card p-5 animate-fade-up">
@@ -308,7 +405,7 @@ export default function Home() {
                   </h2>
                 </div>
               </div>
-              <HistoryPanel />
+              <HistoryPanel entries={history} loading={historyLoading} />
             </div>
           ) : (
             <div className="section-card p-5 animate-fade-up" style={{ minHeight: 400 }}>
@@ -341,13 +438,9 @@ export default function Home() {
       </div>
 
       {/* ── Footer ── */}
-      <footer
-        className="text-center py-5"
-        style={{ borderTop: "1px solid var(--border)" }}
-      >
+      <footer className="text-center py-5" style={{ borderTop: "1px solid var(--border)" }}>
         <p className="font-mono text-[10.5px] text-[var(--ink-muted)]">
-          NTU Logbook Generator · claude-sonnet-4-6 ·{" "}
-          <span style={{ color: "var(--accent)" }}>python-docx + FastAPI + Next.js</span>
+          NTU Logbook Generator{" "}
         </p>
       </footer>
     </div>

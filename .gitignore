@@ -33,7 +33,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
-
+.claude/
 # Generated
 generated_docs/
 *.docx

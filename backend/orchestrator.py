@@ -25,7 +25,7 @@ from functions.parse_notes import parseRawNotes
 from functions.group_rows import groupIntoWorkRows
 from functions.generate_sections import generateSectionA, generateSectionC
 from functions.build_docx import buildDocx
-from functions.s3_utils import upload_docx_to_s3
+from functions.storage_utils import upload_docx_to_storage
 
 logger = logging.getLogger(__name__)
 
@@ -230,19 +230,20 @@ def orchestrate(request: dict) -> dict:
     t = _log_step("7. buildDocx", t)
     logger.info(f"  DOCX size: {len(docx_bytes)} bytes")
 
-    # ── Step 8: Upload to S3 ───────────────────────────────────────
-    s3_info = {}
+    # ── Step 8: Upload to Supabase Storage ────────────────────────
+    storage_info = {}
+    user_id = request.get("user_id", "")
     try:
-        s3_info = upload_docx_to_s3(
+        storage_info = upload_docx_to_storage(
             docx_bytes=docx_bytes,
-            student_name=str(metadata["student_name"]),
+            user_id=user_id,
             entry_number=int(metadata["entry_number"]),
             submission_date=str(metadata["submission_date"]),
         )
-        t = _log_step("8. upload_to_s3", t)
+        t = _log_step("8. upload_to_storage", t)
     except RuntimeError as e:
-        warnings.append(f"S3 upload failed: {e}. DOCX content is still available.")
-        logger.error(f"S3 upload error: {e}")
+        warnings.append(f"Storage upload failed: {e}. DOCX content is still available.")
+        logger.error(f"Storage upload error: {e}")
 
     # ── Step 9: Build summary ──────────────────────────────────────
     total_elapsed = round(time.time() - overall_start, 2)
@@ -260,8 +261,8 @@ def orchestrate(request: dict) -> dict:
         "section_a": section_a,
         "section_b_rows": work_rows,
         "section_c": section_c,
-        "docx_bytes": docx_bytes,  # raw bytes — used by FastAPI to stream response
-        "s3_info": s3_info,
+        "docx_bytes": docx_bytes,  # raw bytes — base64-encoded by FastAPI
+        "storage_info": storage_info,
         "summary": summary,
         "token_usage": {
             "total_tokens": total_tokens,

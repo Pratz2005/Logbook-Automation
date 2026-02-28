@@ -1,42 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { StudentMetadata, saveMetadata, loadMetadata } from "@/lib/api";
+import { StudentMetadata, UserProfile } from "@/lib/api";
 
 interface Props {
   value: Partial<StudentMetadata>;
   onChange: (v: Partial<StudentMetadata>) => void;
+  profile: UserProfile | null;
+  onEditProfile?: () => void;
 }
 
-const fields: {
+const entryFields: {
   key: keyof StudentMetadata;
   label: string;
   placeholder: string;
   hint?: string;
   type?: string;
 }[] = [
-  { key: "student_name",   label: "Full Name",        placeholder: "Tan Wei Ming" },
-  { key: "matric_number",  label: "Matric Number",     placeholder: "U2012345B" },
-  { key: "company",        label: "Company",           placeholder: "TechCorp Singapore Pte Ltd" },
-  { key: "supervisor",     label: "Supervisor",        placeholder: "John Chen" },
-  { key: "entry_number",   label: "Entry No.",         placeholder: "3", type: "number", hint: "Which logbook submission is this?" },
-  { key: "period_start",   label: "Period Start",      placeholder: "09/02/2026", hint: "DD/MM/YYYY" },
-  { key: "period_end",     label: "Period End",        placeholder: "21/02/2026", hint: "DD/MM/YYYY" },
-  { key: "submission_date",label: "Submission Date",   placeholder: "21/02/2026", hint: "DD/MM/YYYY" },
+  { key: "entry_number",    label: "Entry No.",       placeholder: "3",           type: "number", hint: "Which logbook submission is this?" },
+  { key: "period_start",    label: "Period Start",    placeholder: "09/02/2026",  hint: "DD/MM/YYYY" },
+  { key: "period_end",      label: "Period End",      placeholder: "21/02/2026",  hint: "DD/MM/YYYY" },
+  { key: "submission_date", label: "Submission Date", placeholder: "21/02/2026",  hint: "DD/MM/YYYY" },
 ];
 
-export default function MetadataPanel({ value, onChange }: Props) {
-  const [saved, setSaved] = useState(false);
-
+export default function MetadataPanel({ value, onChange, profile, onEditProfile }: Props) {
   const handleChange = (key: keyof StudentMetadata, val: string) => {
     const updated = { ...value, [key]: key === "entry_number" ? Number(val) : val };
     onChange(updated);
-  };
-
-  const handleSave = () => {
-    saveMetadata(value as StudentMetadata);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
   };
 
   return (
@@ -49,36 +38,54 @@ export default function MetadataPanel({ value, onChange }: Props) {
             Metadata
           </h2>
         </div>
-        <button
-          onClick={handleSave}
-          className="btn-secondary text-xs flex items-center gap-1.5"
-        >
-          {saved ? (
-            <>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M2 6l3 3 5-5" stroke="var(--success)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Saved
-            </>
-          ) : (
-            <>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M2 6l1.5 1.5L10 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Save info
-            </>
-          )}
-        </button>
+        {onEditProfile && (
+          <button onClick={onEditProfile} className="btn-secondary text-xs flex items-center gap-1.5">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+              <path d="M7.5 1.5l2 2-6 6H1.5v-2l6-6z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+            </svg>
+            Edit profile
+          </button>
+        )}
       </div>
 
-      {/* Fields grid */}
+      {/* Profile fields — read-only (from Supabase) */}
+      {profile && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
+          <div className="col-span-2">
+            <label className="field-label">Full Name</label>
+            <div className="input-field" style={{ color: "var(--ink-muted)", cursor: "default" }}>
+              {profile.student_name}
+            </div>
+          </div>
+          <div>
+            <label className="field-label">Matric Number</label>
+            <div className="input-field" style={{ color: "var(--ink-muted)", cursor: "default" }}>
+              {profile.matric_number}
+            </div>
+          </div>
+          <div>
+            <label className="field-label">Supervisor</label>
+            <div className="input-field" style={{ color: "var(--ink-muted)", cursor: "default" }}>
+              {profile.supervisor}
+            </div>
+          </div>
+          <div className="col-span-2">
+            <label className="field-label">Company</label>
+            <div className="input-field" style={{ color: "var(--ink-muted)", cursor: "default" }}>
+              {profile.company}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <hr className="rule-line mb-4" />
+
+      {/* Entry-specific fields — editable each submission */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-        {fields.map(({ key, label, placeholder, hint, type }, i) => (
+        {entryFields.map(({ key, label, placeholder, hint, type }, i) => (
           <div
             key={key}
-            className={`animate-fade-up animate-d${Math.min(i + 1, 5)} ${
-              key === "company" || key === "student_name" ? "col-span-2" : ""
-            }`}
+            className={`animate-fade-up animate-d${Math.min(i + 1, 5)}`}
           >
             <label className="field-label">
               {label}
@@ -101,7 +108,7 @@ export default function MetadataPanel({ value, onChange }: Props) {
         ))}
       </div>
 
-      {/* Persistent note */}
+      {/* Info note */}
       <div
         className="mt-5 px-3 py-2.5 rounded-[4px] flex gap-2.5"
         style={{ background: "var(--accent-light)", border: "1px solid rgba(196,120,58,0.2)" }}
@@ -112,7 +119,7 @@ export default function MetadataPanel({ value, onChange }: Props) {
           <circle cx="7" cy="4.5" r="0.7" fill="var(--accent)"/>
         </svg>
         <p className="text-[11.5px] text-[var(--accent-dim)] leading-relaxed">
-          Student info and internship objective are saved locally and pre-filled on your next visit.
+          Profile info is synced from your account. Update period dates and entry number for each new submission.
         </p>
       </div>
     </div>

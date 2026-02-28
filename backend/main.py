@@ -2,31 +2,33 @@
 FastAPI Backend for NTU Logbook Generator
 
 Endpoints:
-  POST /api/generate     — Generate a logbook entry (returns preview + download URL)
-  GET  /api/history      — List past logbook entries for a student from S3
-  GET  /api/download/:key — Redirect to S3 presigned URL
-  POST /api/metadata     — Save/update student metadata (returns JSON for localStorage sync)
-  GET  /health           — Health check
+  POST /api/auth/register   — Create account (matric + password + profile)
+  POST /api/auth/login      — Sign in, receive JWT
+  GET  /api/profile         — Get current user profile
+  PUT  /api/profile         — Update company / supervisor / objective
+  POST /api/generate        — Generate a logbook entry (JWT required)
+  GET  /api/history         — List past entries for authenticated user
+  GET  /health              — Health check
 
-Rate limiting: max 1 concurrent request per IP, minimum 2s between submissions.
+Rate limiting: max 1 concurrent generate per user, minimum 2s between submits.
 """
 import asyncio
 import base64
-import io
 import logging
 import os
 import time
 from collections import defaultdict
-from typing import Annotated, Optional
+from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from supabase import create_client, Client
 
-from agent import orchestrate, validate_inputs
-from functions.s3_utils import list_student_logbooks
+from orchestrator import orchestrate, validate_inputs
+from functions.storage_utils import get_signed_url
 
 load_dotenv()
 
@@ -40,7 +42,7 @@ logger = logging.getLogger(__name__)
 # ── App ────────────────────────────────────────────────────────────
 app = FastAPI(
     title="NTU Logbook Generator API",
-    version="1.0.0",
+    version="2.0.0",
     description="Transforms raw daily notes into formatted NTU internship logbook entries.",
 )
 
@@ -54,42 +56,83 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Rate limiting state ────────────────────────────────────────────
+# ── Supabase admin client ──────────────────────────────────────────
+def get_supabase_admin() -> Client:
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.")
+    return create_client(url, key)
+
+# Initialise once at startup (crashes fast if env vars are missing)
+try:
+    supabase_admin: Client = get_supabase_admin()
+except RuntimeError as e:
+    logger.warning(f"Supabase not configured: {e}. Auth endpoints will fail.")
+    supabase_admin = None  # type: ignore
+
+# ── JWT / Auth helper ──────────────────────────────────────────────
+async def get_current_user(request: Request) -> dict:
+    """Extract and verify the Supabase JWT from the Authorization header."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing authorization token.")
+    token = auth_header.removeprefix("Bearer ")
+    try:
+        user_resp = supabase_admin.auth.get_user(token)
+        return {"user_id": str(user_resp.user.id), "email": user_resp.user.email}
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token.")
+
+# ── Rate limiting ──────────────────────────────────────────────────
 _last_request_time: dict[str, float] = defaultdict(float)
 _active_requests: dict[str, int] = defaultdict(int)
 _rate_limit_lock = asyncio.Lock()
 MIN_REQUEST_INTERVAL_SECONDS = 2.0
 
 
-async def _check_rate_limit(client_ip: str) -> None:
-    """
-    Enforce:
-    - Minimum 2 seconds between submissions from same IP
-    - Max 1 concurrent request per IP (queue others)
-    """
+async def _check_rate_limit(key: str) -> None:
     async with _rate_limit_lock:
-        last_time = _last_request_time[client_ip]
-        elapsed = time.time() - last_time
+        elapsed = time.time() - _last_request_time[key]
         if elapsed < MIN_REQUEST_INTERVAL_SECONDS:
             wait = MIN_REQUEST_INTERVAL_SECONDS - elapsed
             raise HTTPException(
                 status_code=429,
                 detail=f"Please wait {wait:.1f}s before submitting again.",
             )
-        if _active_requests[client_ip] > 0:
+        if _active_requests[key] > 0:
             raise HTTPException(
                 status_code=429,
                 detail="A logbook is already being generated. Please wait.",
             )
-        _active_requests[client_ip] += 1
-        _last_request_time[client_ip] = time.time()
+        _active_requests[key] += 1
+        _last_request_time[key] = time.time()
 
 
-def _release_rate_limit(client_ip: str) -> None:
-    _active_requests[client_ip] = max(0, _active_requests[client_ip] - 1)
+def _release_rate_limit(key: str) -> None:
+    _active_requests[key] = max(0, _active_requests[key] - 1)
 
 
 # ── Pydantic Models ────────────────────────────────────────────────
+
+class RegisterRequest(BaseModel):
+    matric_number: str = Field(..., min_length=4, max_length=20)
+    password: str = Field(..., min_length=8, max_length=100)
+    student_name: str = Field(..., min_length=1, max_length=100)
+    company: str = Field(..., min_length=1, max_length=200)
+    supervisor: str = Field(..., min_length=1, max_length=100)
+
+
+class LoginRequest(BaseModel):
+    matric_number: str = Field(..., min_length=1, max_length=20)
+    password: str = Field(..., min_length=1, max_length=100)
+
+
+class UpdateProfileRequest(BaseModel):
+    company: Optional[str] = Field(default=None, max_length=200)
+    supervisor: Optional[str] = Field(default=None, max_length=100)
+    internship_objective: Optional[str] = Field(default=None, max_length=2000)
+
 
 class StudentMetadata(BaseModel):
     student_name: str = Field(..., min_length=1, max_length=100)
@@ -117,57 +160,167 @@ class GenerateResponse(BaseModel):
     section_a: str
     section_b_rows: list[dict]
     section_c: str
-    s3_info: dict
+    storage_info: dict
     summary: str
     token_usage: dict
     warnings: list[str]
-    docx_base64: str  # Base64-encoded .docx for direct download
+    docx_base64: str
 
 
-# ── Endpoints ──────────────────────────────────────────────────────
+# ── Auth Endpoints ─────────────────────────────────────────────────
 
-@app.get("/health")
-async def health():
-    return {"status": "ok", "service": "ntu-logbook-generator"}
+@app.post("/api/auth/register")
+async def register(body: RegisterRequest):
+    """
+    Create a new user account.
+    Uses matric_number@ntu.edu.sg as the Supabase auth email.
+    """
+    email = f"{body.matric_number}@ntu.edu.sg"
+    try:
+        auth_resp = supabase_admin.auth.admin.create_user({
+            "email": email,
+            "password": body.password,
+            "email_confirm": True,  # skip email verification for closed friend group
+        })
+    except Exception as e:
+        error_msg = str(e)
+        if "already" in error_msg.lower() or "unique" in error_msg.lower():
+            raise HTTPException(status_code=409, detail="Matric number already registered.")
+        raise HTTPException(status_code=400, detail=f"Registration failed: {error_msg}")
 
+    user_id = str(auth_resp.user.id)
+
+    # Create profile record
+    supabase_admin.table("profiles").insert({
+        "id": user_id,
+        "matric_number": body.matric_number,
+        "student_name": body.student_name,
+        "company": body.company,
+        "supervisor": body.supervisor,
+        "internship_objective": "",
+    }).execute()
+
+    # Sign in immediately to return a token
+    sign_in_resp = supabase_admin.auth.sign_in_with_password({
+        "email": email,
+        "password": body.password,
+    })
+
+    logger.info(f"New user registered: {body.matric_number} ({body.student_name})")
+
+    return {
+        "access_token": sign_in_resp.session.access_token,
+        "user_id": user_id,
+        "profile": {
+            "matric_number": body.matric_number,
+            "student_name": body.student_name,
+            "company": body.company,
+            "supervisor": body.supervisor,
+            "internship_objective": "",
+        },
+    }
+
+
+@app.post("/api/auth/login")
+async def login(body: LoginRequest):
+    """Sign in with matric number and password. Returns JWT access token."""
+    email = f"{body.matric_number}@ntu.edu.sg"
+    try:
+        resp = supabase_admin.auth.sign_in_with_password({
+            "email": email,
+            "password": body.password,
+        })
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid matric number or password.")
+
+    user_id = str(resp.user.id)
+    profile_resp = supabase_admin.table("profiles").select("*").eq("id", user_id).maybe_single().execute()
+    profile = profile_resp.data or {}
+
+    logger.info(f"User logged in: {body.matric_number}")
+
+    return {
+        "access_token": resp.session.access_token,
+        "user_id": user_id,
+        "profile": profile,
+    }
+
+
+# ── Profile Endpoints ──────────────────────────────────────────────
+
+@app.get("/api/profile")
+async def get_profile(request: Request):
+    """Return the authenticated user's profile."""
+    user_info = await get_current_user(request)
+    result = supabase_admin.table("profiles").select("*").eq("id", user_info["user_id"]).maybe_single().execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    return result.data
+
+
+@app.put("/api/profile")
+async def update_profile(request: Request, body: UpdateProfileRequest):
+    """Update company, supervisor, or internship objective."""
+    user_info = await get_current_user(request)
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        return {"success": True}
+    supabase_admin.table("profiles").update(updates).eq("id", user_info["user_id"]).execute()
+    return {"success": True}
+
+
+# ── Generation Endpoint ────────────────────────────────────────────
 
 @app.post("/api/generate", response_model=GenerateResponse)
 async def generate_logbook(request_body: GenerateRequest, request: Request):
     """
-    Main generation endpoint.
+    Main generation endpoint. Requires JWT.
 
-    Steps: validate → parse → group → generate Section A → generate Section C → build DOCX → upload S3
-    Rate limited: 1 request per 2 seconds per IP, 1 concurrent per IP.
-    Claude API timeout: 30 seconds (enforced via streaming).
+    Steps: validate → parse → group → Section A → Section C → DOCX → Storage → DB save
+    Rate limited: 1 request per 2 seconds per user, 1 concurrent per user.
     """
-    client_ip = request.client.host if request.client else "unknown"
+    user_info = await get_current_user(request)
+    rate_key = user_info["user_id"]
 
-    await _check_rate_limit(client_ip)
+    await _check_rate_limit(rate_key)
 
     try:
-        # Convert Pydantic model to dict
         req_dict = request_body.model_dump()
         req_dict["metadata"] = request_body.metadata.model_dump()
-        # Convert entry_number to int (it already is, but be explicit)
         req_dict["metadata"]["entry_number"] = int(req_dict["metadata"]["entry_number"])
-        # Convert period fields to strings with / format
-        for field in ["period_start", "period_end", "submission_date"]:
-            req_dict["metadata"][field] = str(req_dict["metadata"][field])
+        req_dict["user_id"] = user_info["user_id"]
 
         logger.info(
-            f"[POST /api/generate] ip={client_ip} | "
+            f"[POST /api/generate] user={user_info['user_id']} | "
             f"student={req_dict['metadata']['student_name']} | "
             f"entry={req_dict['metadata']['entry_number']}"
         )
 
-        # Run orchestration in thread pool (synchronous IO)
         loop = asyncio.get_event_loop()
         result = await asyncio.wait_for(
             loop.run_in_executor(None, orchestrate, req_dict),
-            timeout=120.0,  # 2 min total timeout
+            timeout=120.0,
         )
 
-        # Encode docx as base64 for JSON response
+        # Save entry to Supabase DB
+        try:
+            supabase_admin.table("logbook_entries").insert({
+                "user_id": user_info["user_id"],
+                "entry_number": req_dict["metadata"]["entry_number"],
+                "period_start": req_dict["metadata"]["period_start"],
+                "period_end": req_dict["metadata"]["period_end"],
+                "submission_date": req_dict["metadata"]["submission_date"],
+                "section_a": result["section_a"],
+                "section_b_json": result["section_b_rows"],
+                "section_c": result["section_c"],
+                "storage_path": result.get("storage_info", {}).get("storage_path"),
+                "token_usage": result["token_usage"],
+                "warnings": result["warnings"],
+            }).execute()
+        except Exception as db_err:
+            logger.error(f"DB save failed (non-fatal): {db_err}")
+            result["warnings"].append("Entry could not be saved to history database.")
+
         docx_b64 = base64.b64encode(result.pop("docx_bytes", b"")).decode("utf-8")
 
         return GenerateResponse(
@@ -184,51 +337,42 @@ async def generate_logbook(request_body: GenerateRequest, request: Request):
         logger.error(f"Generation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        _release_rate_limit(client_ip)
+        _release_rate_limit(rate_key)
 
 
-@app.get("/api/history/{student_name}")
-async def get_history(student_name: str):
-    """List past logbook entries for a student from S3."""
-    if not student_name.strip():
-        raise HTTPException(status_code=400, detail="student_name is required.")
+# ── History Endpoint ───────────────────────────────────────────────
 
-    try:
-        entries = list_student_logbooks(student_name)
-        return {"entries": entries, "count": len(entries)}
-    except Exception as e:
-        logger.error(f"History fetch error: {e}")
-        raise HTTPException(status_code=500, detail=f"Could not fetch history: {e}")
+@app.get("/api/history")
+async def get_history(request: Request):
+    """List past logbook entries for the authenticated user."""
+    user_info = await get_current_user(request)
 
-
-@app.get("/api/download")
-async def download_docx(key: str):
-    """
-    Return a docx file from S3 by key.
-    Used when the presigned URL needs to be proxied through the backend.
-    """
-    import boto3
-    import os
-
-    try:
-        client = boto3.client(
-            "s3",
-            region_name=os.getenv("AWS_REGION", "ap-southeast-1"),
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    result = (
+        supabase_admin.table("logbook_entries")
+        .select(
+            "id, entry_number, period_start, period_end, submission_date, "
+            "section_a, section_c, storage_path, token_usage, created_at"
         )
-        bucket = os.getenv("S3_BUCKET_NAME", "ntu-logbook-docs")
-        obj = client.get_object(Bucket=bucket, Key=key)
-        content = obj["Body"].read()
+        .eq("user_id", user_info["user_id"])
+        .order("created_at", desc=True)
+        .execute()
+    )
 
-        filename = key.split("/")[-1]
-        return Response(
-            content=content,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"File not found: {e}")
+    entries = []
+    for entry in result.data:
+        presigned_url = None
+        if entry.get("storage_path"):
+            presigned_url = get_signed_url(entry["storage_path"])
+        entries.append({**entry, "presigned_url": presigned_url})
+
+    return {"entries": entries, "count": len(entries)}
+
+
+# ── Health ─────────────────────────────────────────────────────────
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "ntu-logbook-generator", "version": "2.0.0"}
 
 
 if __name__ == "__main__":

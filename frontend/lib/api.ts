@@ -1,7 +1,9 @@
 /**
  * API client for the NTU Logbook Generator FastAPI backend.
- * Includes debouncing (min 2s between calls) and request timeout.
+ * Auth: JWT from Supabase session, attached as Authorization: Bearer header.
  */
+
+import { getAccessToken } from "./supabase";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -11,9 +13,18 @@ export interface StudentMetadata {
   company: string;
   supervisor: string;
   entry_number: number;
-  period_start: string;  // DD/MM/YYYY
-  period_end: string;    // DD/MM/YYYY
+  period_start: string;   // DD/MM/YYYY
+  period_end: string;     // DD/MM/YYYY
   submission_date: string; // DD/MM/YYYY
+}
+
+export interface UserProfile {
+  id?: string;
+  matric_number: string;
+  student_name: string;
+  company: string;
+  supervisor: string;
+  internship_objective: string;
 }
 
 export interface GenerateRequest {
@@ -38,9 +49,9 @@ export interface GenerateResponse {
   section_a: string;
   section_b_rows: WorkRow[];
   section_c: string;
-  s3_info: {
+  storage_info: {
     presigned_url?: string;
-    s3_key?: string;
+    storage_path?: string;
     file_size_bytes?: number;
   };
   summary: string;
@@ -53,32 +64,49 @@ export interface GenerateResponse {
 }
 
 export interface HistoryEntry {
-  s3_key: string;
-  last_modified: string;
-  file_size_bytes: number;
-  presigned_url: string;
+  id: string;
+  entry_number: number;
+  period_start: string;
+  period_end: string;
+  submission_date: string;
+  section_a: string;
+  section_c: string;
+  storage_path: string | null;
+  token_usage: { total_tokens: number; estimated_cost_usd: number } | null;
+  created_at: string;
+  presigned_url: string | null;
 }
 
-// Debounce tracking
+// ── Debounce tracking ─────────────────────────────────────────────
 let lastCallTime = 0;
 const MIN_INTERVAL_MS = 2000;
 
+// ── Core fetch wrapper ────────────────────────────────────────────
 async function apiCall<T>(
   path: string,
   options: RequestInit = {},
-  timeoutMs = 120_000
+  timeoutMs = 120_000,
+  requireAuth = true,
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+
+  if (requireAuth) {
+    const token = await getAccessToken();
+    if (!token) throw new Error("Not authenticated. Please sign in.");
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       ...options,
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
+      headers,
     });
 
     clearTimeout(timer);
@@ -102,8 +130,50 @@ async function apiCall<T>(
   }
 }
 
+// ── Auth API ──────────────────────────────────────────────────────
+
+export async function registerUser(
+  matric_number: string,
+  password: string,
+  student_name: string,
+  company: string,
+  supervisor: string,
+): Promise<{ access_token: string; user_id: string; profile: UserProfile }> {
+  return apiCall(
+    "/api/auth/register",
+    { method: "POST", body: JSON.stringify({ matric_number, password, student_name, company, supervisor }) },
+    30_000,
+    false,
+  );
+}
+
+export async function loginUser(
+  matric_number: string,
+  password: string,
+): Promise<{ access_token: string; user_id: string; profile: UserProfile }> {
+  return apiCall(
+    "/api/auth/login",
+    { method: "POST", body: JSON.stringify({ matric_number, password }) },
+    30_000,
+    false,
+  );
+}
+
+// ── Profile API ───────────────────────────────────────────────────
+
+export async function fetchProfile(): Promise<UserProfile> {
+  return apiCall<UserProfile>("/api/profile");
+}
+
+export async function updateProfile(
+  updates: Partial<Pick<UserProfile, "company" | "supervisor" | "internship_objective">>,
+): Promise<void> {
+  await apiCall("/api/profile", { method: "PUT", body: JSON.stringify(updates) });
+}
+
+// ── Generate API ──────────────────────────────────────────────────
+
 export async function generateLogbook(req: GenerateRequest): Promise<GenerateResponse> {
-  // Enforce minimum 2s debounce
   const now = Date.now();
   const elapsed = now - lastCallTime;
   if (elapsed < MIN_INTERVAL_MS && lastCallTime > 0) {
@@ -118,15 +188,14 @@ export async function generateLogbook(req: GenerateRequest): Promise<GenerateRes
   });
 }
 
-export async function getHistory(studentName: string): Promise<{ entries: HistoryEntry[]; count: number }> {
-  if (!studentName.trim()) return { entries: [], count: 0 };
-  const encoded = encodeURIComponent(studentName);
-  return apiCall(`/api/history/${encoded}`);
+// ── History API ───────────────────────────────────────────────────
+
+export async function fetchHistory(): Promise<{ entries: HistoryEntry[]; count: number }> {
+  return apiCall<{ entries: HistoryEntry[]; count: number }>("/api/history");
 }
 
-/**
- * Download docx from base64 string (returned inline in generate response)
- */
+// ── DOCX download helper ──────────────────────────────────────────
+
 export function downloadDocxFromBase64(base64: string, filename: string): void {
   const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
   const blob = new Blob([bytes], {
@@ -140,67 +209,4 @@ export function downloadDocxFromBase64(base64: string, filename: string): void {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-}
-
-// ── localStorage helpers ─────────────────────────────────────────
-
-const METADATA_KEY = "ntu_logbook_metadata";
-const OBJECTIVE_KEY = "ntu_logbook_objective";
-const HISTORY_KEY = "ntu_logbook_history";
-
-export function saveMetadata(metadata: StudentMetadata): void {
-  try {
-    localStorage.setItem(METADATA_KEY, JSON.stringify(metadata));
-  } catch {}
-}
-
-export function loadMetadata(): Partial<StudentMetadata> {
-  try {
-    const raw = localStorage.getItem(METADATA_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-export function saveObjective(objective: string): void {
-  try {
-    localStorage.setItem(OBJECTIVE_KEY, objective);
-  } catch {}
-}
-
-export function loadObjective(): string {
-  try {
-    return localStorage.getItem(OBJECTIVE_KEY) || "";
-  } catch {
-    return "";
-  }
-}
-
-export interface LocalHistoryEntry {
-  entry_number: number;
-  period_start: string;
-  period_end: string;
-  generated_at: string;
-  section_a: string;
-  section_c: string;
-  presigned_url?: string;
-  s3_key?: string;
-}
-
-export function saveLocalHistory(entry: LocalHistoryEntry): void {
-  try {
-    const existing = loadLocalHistory();
-    const updated = [entry, ...existing.filter((e) => e.entry_number !== entry.entry_number)].slice(0, 20);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-  } catch {}
-}
-
-export function loadLocalHistory(): LocalHistoryEntry[] {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
 }
