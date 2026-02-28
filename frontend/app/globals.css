@@ -1,0 +1,235 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=DM+Mono:wght@300;400&display=swap');
+@import "tailwindcss";
+
+:root {
+  --ink: #0F1923;
+  --ink-dim: #2D3E4F;
+  --ink-muted: #5A7080;
+  --paper: #F5F0E8;
+  --paper-warm: #EDE7D9;
+  --paper-cool: #F8F6F2;
+  --accent: #C4783A;
+  --accent-dim: #A8622E;
+  --accent-light: #F0DCC4;
+  --success: #3A7C5A;
+  --success-light: #D4EDE0;
+  --error: #9B2335;
+  --error-light: #FDDDE2;
+  --warning: #8B6914;
+  --warning-light: #FDF3CC;
+  --border: rgba(15, 25, 35, 0.12);
+  --shadow-sm: 0 1px 3px rgba(15, 25, 35, 0.06);
+  --shadow-md: 0 4px 16px rgba(15, 25, 35, 0.09);
+  --shadow-lg: 0 8px 32px rgba(15, 25, 35, 0.13);
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'DM Sans', -apple-system, sans-serif;
+  background-color: var(--paper-cool);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display { font-family: 'Playfair Display', Georgia, serif; }
+.font-mono { font-family: 'DM Mono', 'Courier New', monospace; }
+
+input, textarea, select {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--paper-warm); }
+::-webkit-scrollbar-thumb { background: rgba(15,25,35,0.18); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(15,25,35,0.3); }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+.animate-fade-up   { animation: fadeUp    0.4s ease-out both; }
+.animate-slide-right { animation: slideRight 0.35s ease-out both; }
+.animate-d1 { animation-delay: 0.05s; }
+.animate-d2 { animation-delay: 0.10s; }
+.animate-d3 { animation-delay: 0.15s; }
+.animate-d4 { animation-delay: 0.20s; }
+.animate-d5 { animation-delay: 0.25s; }
+
+.shimmer {
+  background: linear-gradient(90deg, var(--paper-warm) 0%, var(--paper-cool) 45%, var(--paper-warm) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.section-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s;
+}
+
+.input-field {
+  width: 100%;
+  padding: 8px 11px;
+  background: var(--paper-cool);
+  border: 1px solid rgba(15,25,35,0.14);
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 13px;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  outline: none;
+  resize: vertical;
+}
+
+.input-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(196,120,58,0.12);
+  background: #fff;
+}
+
+.input-field::placeholder { color: var(--ink-muted); }
+
+.field-label {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 5px;
+}
+
+.btn-primary {
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  border-radius: 4px;
+  padding: 10px 22px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  letter-spacing: 0.01em;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--ink-dim);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary:active:not(:disabled) { transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--ink-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 15px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn-secondary:hover { background: var(--paper-warm); border-color: rgba(15,25,35,0.22); }
+
+.btn-accent {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 22px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.btn-accent:hover:not(:disabled) { background: var(--accent-dim); }
+.btn-accent:active:not(:disabled) { transform: scale(0.98); }
+.btn-accent:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.tag-neutral { background: var(--paper-warm); color: var(--ink-dim); }
+.tag-success { background: var(--success-light); color: var(--success); }
+.tag-warning { background: var(--warning-light); color: var(--warning); }
+.tag-error   { background: var(--error-light);   color: var(--error); }
+.tag-accent  { background: var(--accent-light);  color: var(--accent-dim); }
+
+.section-letter {
+  font-family: 'Playfair Display', serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.rule-line {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 16px 0;
+}
+
+/* Pill nav */
+.nav-pill {
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+}
+
+.nav-pill.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.nav-pill:hover:not(.active) {
+  background: var(--paper-warm);
+  color: var(--ink-dim);
+}
