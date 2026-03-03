@@ -22,8 +22,7 @@ from datetime import datetime
 from typing import Optional
 
 from functions.parse_notes import parseRawNotes
-from functions.group_rows import groupIntoWorkRows
-from functions.generate_sections import generateSectionA, generateSectionC
+from functions.generate_sections import generateSectionA, generateSectionB, generateSectionC
 from functions.build_docx import buildDocx
 from functions.storage_utils import upload_docx_to_storage
 
@@ -39,7 +38,7 @@ REQUIRED_METADATA_FIELDS = [
     "matric_number",
     "company",
     "supervisor",
-    "entry_number",
+    "entry_name",
     "period_start",
     "period_end",
     "submission_date",
@@ -99,13 +98,10 @@ def validate_inputs(request: dict) -> None:
     if not internship_objective or not internship_objective.strip():
         raise ValueError("internship_objective cannot be empty.")
 
-    # Validate entry number
-    try:
-        entry_num = int(metadata.get("entry_number", 0))
-        if entry_num < 1:
-            raise ValueError()
-    except (TypeError, ValueError):
-        raise ValueError("entry_number must be a positive integer.")
+    # Validate entry name
+    entry_name = metadata.get("entry_name", "")
+    if not entry_name or not str(entry_name).strip():
+        raise ValueError("entry_name cannot be empty.")
 
 
 def _log_step(step_name: str, start_time: float) -> float:
@@ -192,9 +188,11 @@ def orchestrate(request: dict) -> dict:
             "All entries appear to be leave/holiday. Work rows will reflect this."
         )
 
-    # ── Step 4: Group into work rows ───────────────────────────────
-    work_rows = groupIntoWorkRows(entries)
-    t = _log_step("4. groupIntoWorkRows", t)
+    # ── Step 4: Group into work rows (Claude-powered) ──────────────
+    work_rows, usage_b = generateSectionB(entries=entries, metadata=metadata)
+    total_tokens += usage_b["total_tokens"]
+    total_cost += usage_b["estimated_cost_usd"]
+    t = _log_step("4. generateSectionB", t)
     logger.info(f"  Grouped into {len(work_rows)} work rows")
 
     # ── Step 5: Generate Section A ─────────────────────────────────
@@ -237,7 +235,7 @@ def orchestrate(request: dict) -> dict:
         storage_info = upload_docx_to_storage(
             docx_bytes=docx_bytes,
             user_id=user_id,
-            entry_number=int(metadata["entry_number"]),
+            entry_name=str(metadata["entry_name"]),
             submission_date=str(metadata["submission_date"]),
         )
         t = _log_step("8. upload_to_storage", t)
@@ -248,9 +246,9 @@ def orchestrate(request: dict) -> dict:
     # ── Step 9: Build summary ──────────────────────────────────────
     total_elapsed = round(time.time() - overall_start, 2)
     summary = (
-        f"Generated Logbook Entry {metadata['entry_number']} for {metadata['student_name']} "
+        f"Generated Logbook Entry '{metadata['entry_name']}' for {metadata['student_name']} "
         f"| Period: {metadata['period_start']} – {metadata['period_end']} "
-        f"| {len(entries)} daily entries → {len(work_rows)} work rows "
+        f"| {len(entries)} daily entries → {len(work_rows)} Section B rows "
         f"| Tokens used: {total_tokens} (≈${total_cost:.4f}) "
         f"| Total time: {total_elapsed}s"
     )

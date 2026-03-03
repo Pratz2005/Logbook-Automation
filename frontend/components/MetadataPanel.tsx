@@ -16,7 +16,7 @@ const entryFields: {
   hint?: string;
   type?: string;
 }[] = [
-  { key: "entry_number",    label: "Entry No.",       placeholder: "3",           type: "number", hint: "Which logbook submission is this?" },
+  { key: "entry_name",      label: "Entry Name",      placeholder: "LB-3",                        hint: "Name or label for this submission" },
   { key: "period_start",    label: "Period Start",    placeholder: "09/02/2026",  hint: "DD/MM/YYYY" },
   { key: "period_end",      label: "Period End",      placeholder: "21/02/2026",  hint: "DD/MM/YYYY" },
   { key: "submission_date", label: "Submission Date", placeholder: "21/02/2026",  hint: "DD/MM/YYYY" },
@@ -24,7 +24,7 @@ const entryFields: {
 
 export default function MetadataPanel({ value, onChange, profile, onEditProfile }: Props) {
   const handleChange = (key: keyof StudentMetadata, val: string) => {
-    const updated = { ...value, [key]: key === "entry_number" ? Number(val) : val };
+    const updated = { ...value, [key]: val };
     onChange(updated);
   };
 
@@ -119,7 +119,7 @@ export default function MetadataPanel({ value, onChange, profile, onEditProfile 
           <circle cx="7" cy="4.5" r="0.7" fill="var(--accent)"/>
         </svg>
         <p className="text-[11.5px] text-[var(--accent-dim)] leading-relaxed">
-          Profile info is synced from your account. Update period dates and entry number for each new submission.
+          Profile info is synced from your account. Update the entry name and period dates for each new submission.
         </p>
       </div>
     </div>

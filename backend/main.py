@@ -139,7 +139,7 @@ class StudentMetadata(BaseModel):
     matric_number: str = Field(..., min_length=1, max_length=20)
     company: str = Field(..., min_length=1, max_length=200)
     supervisor: str = Field(..., min_length=1, max_length=100)
-    entry_number: int = Field(..., ge=1, le=99)
+    entry_name: str = Field(..., min_length=1, max_length=100)
     period_start: str = Field(..., pattern=r"^\d{2}/\d{2}/\d{4}$")
     period_end: str = Field(..., pattern=r"^\d{2}/\d{2}/\d{4}$")
     submission_date: str = Field(..., pattern=r"^\d{2}/\d{2}/\d{4}$")
@@ -287,13 +287,12 @@ async def generate_logbook(request_body: GenerateRequest, request: Request):
     try:
         req_dict = request_body.model_dump()
         req_dict["metadata"] = request_body.metadata.model_dump()
-        req_dict["metadata"]["entry_number"] = int(req_dict["metadata"]["entry_number"])
         req_dict["user_id"] = user_info["user_id"]
 
         logger.info(
             f"[POST /api/generate] user={user_info['user_id']} | "
             f"student={req_dict['metadata']['student_name']} | "
-            f"entry={req_dict['metadata']['entry_number']}"
+            f"entry={req_dict['metadata']['entry_name']}"
         )
 
         loop = asyncio.get_event_loop()
@@ -306,7 +305,7 @@ async def generate_logbook(request_body: GenerateRequest, request: Request):
         try:
             supabase_admin.table("logbook_entries").insert({
                 "user_id": user_info["user_id"],
-                "entry_number": req_dict["metadata"]["entry_number"],
+                "entry_name": req_dict["metadata"]["entry_name"],
                 "period_start": req_dict["metadata"]["period_start"],
                 "period_end": req_dict["metadata"]["period_end"],
                 "submission_date": req_dict["metadata"]["submission_date"],
@@ -318,8 +317,11 @@ async def generate_logbook(request_body: GenerateRequest, request: Request):
                 "warnings": result["warnings"],
             }).execute()
         except Exception as db_err:
-            logger.error(f"DB save failed (non-fatal): {db_err}")
-            result["warnings"].append("Entry could not be saved to history database.")
+            err_msg = str(db_err)
+            logger.error(f"DB save failed (non-fatal): {err_msg}")
+            result["warnings"].append(
+                f"Entry could not be saved to history. DB error: {err_msg}"
+            )
 
         docx_b64 = base64.b64encode(result.pop("docx_bytes", b"")).decode("utf-8")
 
@@ -350,7 +352,7 @@ async def get_history(request: Request):
     result = (
         supabase_admin.table("logbook_entries")
         .select(
-            "id, entry_number, period_start, period_end, submission_date, "
+            "id, entry_name, period_start, period_end, submission_date, "
             "section_a, section_c, storage_path, token_usage, created_at"
         )
         .eq("user_id", user_info["user_id"])

@@ -12,7 +12,7 @@ export interface StudentMetadata {
   matric_number: string;
   company: string;
   supervisor: string;
-  entry_number: number;
+  entry_name: string;
   period_start: string;   // DD/MM/YYYY
   period_end: string;     // DD/MM/YYYY
   submission_date: string; // DD/MM/YYYY
@@ -65,7 +65,7 @@ export interface GenerateResponse {
 
 export interface HistoryEntry {
   id: string;
-  entry_number: number;
+  entry_name: string;
   period_start: string;
   period_end: string;
   submission_date: string;

@@ -50,7 +50,7 @@ Student: {student_name}
 Matric: {matric_number}
 Company: {company}
 Supervisor: {supervisor}
-Entry Number: {entry_number}
+Entry Name: {entry_name}
 Period: {period_start} to {period_end}
 Submission Date: {submission_date}
 </metadata>
@@ -96,7 +96,7 @@ IMPORTANT RULES:
 SECTION_C_USER_TEMPLATE = """<metadata>
 Student: {student_name}
 Company: {company}
-Entry Number: {entry_number}
+Entry Name: {entry_name}
 Period: {period_start} to {period_end}
 </metadata>
 
@@ -117,6 +117,41 @@ Period: {period_start} to {period_end}
 Write Section C (Reflection) for this logbook entry covering {period_start} to {period_end}. \
 Use exactly the four subheadings: Key Achievements, Main Challenge Faced, What I Did Well, Areas for Improvement. \
 Do NOT mention leave or public holidays as areas for improvement."""
+
+# ─────────────────────────────────────────────
+# Section B Prompt (Claude-powered grouping)
+# ─────────────────────────────────────────────
+
+SECTION_B_SYSTEM = SYSTEM_BASE + """
+You are generating Section B (Work Log Table) rows for the NTU Industrial Attachment Logbook.
+
+Your task: group consecutive daily work entries into merged table rows based on semantic similarity.
+
+GROUPING RULES:
+- Merge consecutive days ONLY if they involve the same project, task type, or continuing activity
+- Do NOT merge days with clearly different work (e.g. "testing" vs "writing documentation" vs "client meeting")
+- Use semantic judgment — typos, paraphrasing, or slightly different phrasing of the same activity SHOULD be merged
+- Consecutive leave/holiday days must always be merged into a single leave row
+- Leave rows must NEVER be merged with work rows
+
+DESCRIPTION RULES:
+- Write one clean, concise, formal task description per merged group
+- Do NOT just concatenate raw task names — summarise the work meaningfully in 1–2 phrases
+- Use formal language appropriate for an NTU academic document
+- For leave rows: use the leave type exactly (e.g. "Annual Leave", "Public Holiday")
+
+OUTPUT FORMAT:
+- Return ONLY a valid JSON array, with no extra text, explanations, or markdown code fences
+- Each element must have exactly these keys:
+  {"task_description": string, "date_from": "DD/MM/YYYY", "date_to": "DD/MM/YYYY", "is_leave": boolean}
+"""
+
+SECTION_B_USER_TEMPLATE = """<daily_entries>
+{entries_text}
+</daily_entries>
+
+Group the above daily entries into Section B work rows for the period {period_start} to {period_end}.
+Merge consecutive days only when the work is semantically related. Return only the JSON array."""
 
 # ─────────────────────────────────────────────
 # Few-shot prior entry block builder

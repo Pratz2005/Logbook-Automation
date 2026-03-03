@@ -27,7 +27,7 @@ def get_supabase_client() -> Client:
 def upload_docx_to_storage(
     docx_bytes: bytes,
     user_id: str,
-    entry_number: int,
+    entry_name: str,
     submission_date: str,
 ) -> dict:
     """
@@ -36,7 +36,7 @@ def upload_docx_to_storage(
     Args:
         docx_bytes:      Raw .docx file bytes
         user_id:         Supabase auth user UUID (used as storage folder)
-        entry_number:    Logbook entry number
+        entry_name:      User-defined logbook entry name
         submission_date: Submission date string (for logging)
 
     Returns:
@@ -45,8 +45,10 @@ def upload_docx_to_storage(
     Raises:
         RuntimeError: If upload fails or credentials are missing.
     """
+    # Sanitise entry_name for use in a file path (replace spaces/slashes with underscores)
+    safe_name = "".join(c if c.isalnum() or c in "-_." else "_" for c in str(entry_name))
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    storage_path = f"{user_id}/entry_{entry_number:02d}_{timestamp}.docx"
+    storage_path = f"{user_id}/entry_{safe_name}_{timestamp}.docx"
 
     try:
         client = get_supabase_client()

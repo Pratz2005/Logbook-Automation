@@ -58,13 +58,16 @@ export default function HistoryPanel({ entries, loading }: Props) {
           >
             <div className="flex items-center gap-3">
               <span
-                className="w-7 h-7 rounded flex items-center justify-center text-[11px] font-bold font-display"
+                className="w-7 h-7 rounded flex items-center justify-center flex-shrink-0"
                 style={{ background: "var(--ink)", color: "var(--paper)" }}
               >
-                {entry.entry_number}
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                  <rect x="2" y="1" width="8" height="11" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+                  <path d="M4 4h5M4 6.5h5M4 9h3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+                </svg>
               </span>
               <div className="text-left">
-                <p className="text-[12.5px] font-medium text-[var(--ink)]">Entry {entry.entry_number}</p>
+                <p className="text-[12.5px] font-medium text-[var(--ink)]">{entry.entry_name}</p>
                 <p className="font-mono text-[10.5px] text-[var(--ink-muted)]">
                   {entry.period_start} – {entry.period_end}
                 </p>

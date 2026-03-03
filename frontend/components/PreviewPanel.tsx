@@ -6,7 +6,7 @@ interface Props {
   result: GenerateResponse | null;
   isLoading: boolean;
   studentName?: string;
-  entryNumber?: number;
+  entryName?: string;
 }
 
 function ShimmerBlock({ rows = 4, className = "" }: { rows?: number; className?: string }) {
@@ -55,11 +55,12 @@ function SectionBox({
   );
 }
 
-export default function PreviewPanel({ result, isLoading, studentName, entryNumber }: Props) {
+export default function PreviewPanel({ result, isLoading, studentName, entryName }: Props) {
   const handleDownload = () => {
     if (!result?.docx_base64) return;
     const name = studentName?.replace(/\s+/g, "_") || "student";
-    downloadDocxFromBase64(result.docx_base64, `Logbook_${name}_Entry${entryNumber || ""}.docx`);
+    const entry = entryName?.replace(/\s+/g, "_") || "entry";
+    downloadDocxFromBase64(result.docx_base64, `Logbook_${name}_${entry}.docx`);
   };
 
   // Empty state

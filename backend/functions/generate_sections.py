@@ -1,11 +1,12 @@
 """
-Step 3 Functions 3 & 5: generateSectionA and generateSectionC
-Call Claude API to transform raw work data into formal logbook prose.
+Step 3 Functions 3, 4 & 5: generateSectionA, generateSectionB, generateSectionC
+Call Claude API to transform raw work data into formal logbook prose and table rows.
 
 Uses claude-sonnet-4-6 with streaming for reliability.
 Includes retry logic (max 2 retries) with clarified prompts on failure.
 Logs all API calls with token usage.
 """
+import json
 import logging
 import time
 from typing import Optional
@@ -15,6 +16,8 @@ import anthropic
 from prompts.templates import (
     SECTION_A_SYSTEM,
     SECTION_A_USER_TEMPLATE,
+    SECTION_B_SYSTEM,
+    SECTION_B_USER_TEMPLATE,
     SECTION_C_SYSTEM,
     SECTION_C_USER_TEMPLATE,
     build_prior_entry_block,
@@ -129,7 +132,7 @@ def generateSectionA(
         matric_number=metadata.get("matric_number", ""),
         company=metadata.get("company", ""),
         supervisor=metadata.get("supervisor", ""),
-        entry_number=metadata.get("entry_number", ""),
+        entry_name=metadata.get("entry_name", ""),
         period_start=metadata.get("period_start", ""),
         period_end=metadata.get("period_end", ""),
         submission_date=metadata.get("submission_date", ""),
@@ -174,7 +177,7 @@ def generateSectionC(
     user_message = SECTION_C_USER_TEMPLATE.format(
         student_name=metadata.get("student_name", ""),
         company=metadata.get("company", ""),
-        entry_number=metadata.get("entry_number", ""),
+        entry_name=metadata.get("entry_name", ""),
         period_start=metadata.get("period_start", ""),
         period_end=metadata.get("period_end", ""),
         work_summary=work_summary,
@@ -184,3 +187,94 @@ def generateSectionC(
     )
 
     return _call_claude(SECTION_C_SYSTEM, user_message, max_tokens=600)
+
+
+def _parse_section_b_json(raw: str) -> list[dict]:
+    """
+    Extract and validate the JSON array from Claude's Section B response.
+    Strips markdown code fences if present.
+
+    Raises:
+        ValueError / json.JSONDecodeError: if the response is not a valid row list.
+    """
+    text = raw.strip()
+
+    # Strip markdown code fences Claude might wrap around JSON
+    if text.startswith("```"):
+        parts = text.split("```")
+        # parts[1] is the content between first pair of fences
+        text = parts[1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+
+    rows = json.loads(text)
+    if not isinstance(rows, list):
+        raise ValueError(f"Expected JSON array, got {type(rows).__name__}")
+
+    result = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError(f"Row is not a dict: {row!r}")
+        result.append({
+            "task_description": str(row["task_description"]),
+            "date_from": str(row["date_from"]),
+            "date_to": str(row["date_to"]),
+            "is_leave": bool(row.get("is_leave", False)),
+            "raw_tasks": [],  # not tracked when using Claude grouping
+        })
+
+    return result
+
+
+def generateSectionB(
+    entries: list[dict],
+    metadata: dict,
+) -> tuple[list[dict], dict]:
+    """
+    Use Claude to semantically group daily entries into Section B work rows.
+
+    Claude decides which consecutive days to merge based on the similarity of the
+    work described — handling typos, paraphrasing, and related tasks correctly.
+
+    Falls back to heuristic groupIntoWorkRows() if Claude returns unparseable JSON.
+
+    Args:
+        entries:  Output from parseRawNotes — sorted list of daily entries.
+        metadata: Student metadata dict (used for period_start / period_end context).
+
+    Returns:
+        (work_rows, usage_stats)
+        work_rows: [{task_description, date_from, date_to, is_leave, raw_tasks}]
+    """
+    if not entries:
+        return [], {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "estimated_cost_usd": 0.0}
+
+    # Format each entry as a readable line for the prompt
+    lines = []
+    for e in entries:
+        tag = "[LEAVE]" if e["is_leave"] else "[WORK]"
+        tasks_str = "; ".join(e["tasks"]) if e["tasks"] else "No tasks recorded"
+        lines.append(f"{e['date_str']} {tag}: {tasks_str}")
+    entries_text = "\n".join(lines)
+
+    user_message = SECTION_B_USER_TEMPLATE.format(
+        entries_text=entries_text,
+        period_start=metadata.get("period_start", ""),
+        period_end=metadata.get("period_end", ""),
+    )
+
+    raw_response, usage = _call_claude(SECTION_B_SYSTEM, user_message, max_tokens=1024)
+
+    try:
+        rows = _parse_section_b_json(raw_response)
+        logger.info(f"[generateSectionB] Claude produced {len(rows)} work rows")
+        return rows, usage
+    except (json.JSONDecodeError, ValueError, KeyError) as exc:
+        logger.warning(
+            f"[generateSectionB] JSON parse failed ({exc}) — falling back to heuristic grouping"
+        )
+        # Lazy import to avoid circular dependency
+        from functions.group_rows import groupIntoWorkRows
+        fallback_rows = groupIntoWorkRows(entries)
+        return fallback_rows, usage

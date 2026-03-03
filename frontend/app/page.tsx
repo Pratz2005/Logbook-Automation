@@ -30,7 +30,7 @@ export default function Home() {
 
   const [metadata, setMetadata] = useState<Partial<StudentMetadata>>({
     student_name: "", matric_number: "", company: "",
-    supervisor: "", entry_number: 1,
+    supervisor: "", entry_name: "",
     period_start: "", period_end: "", submission_date: "",
   });
 
@@ -94,13 +94,8 @@ export default function Home() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const { entries, count } = await fetchHistory();
+      const { entries } = await fetchHistory();
       setHistory(entries);
-      // Set entry number to count + 1 automatically
-      if (count > 0) {
-        const maxEntry = Math.max(...entries.map(e => e.entry_number));
-        setMetadata(prev => ({ ...prev, entry_number: maxEntry + 1 }));
-      }
     } catch {
       // Non-fatal
     } finally {
@@ -142,7 +137,7 @@ export default function Home() {
     setPriorSectionC("");
     setMetadata({
       student_name: "", matric_number: "", company: "",
-      supervisor: "", entry_number: 1,
+      supervisor: "", entry_name: "",
       period_start: "", period_end: "", submission_date: "",
     });
   };
@@ -153,7 +148,7 @@ export default function Home() {
 
     const requiredMeta: (keyof StudentMetadata)[] = [
       "student_name", "matric_number", "company", "supervisor",
-      "entry_number", "period_start", "period_end", "submission_date"
+      "entry_name", "period_start", "period_end", "submission_date"
     ];
     const missing = requiredMeta.filter(k => !metadata[k]?.toString().trim());
     if (missing.length > 0) {
@@ -430,7 +425,7 @@ export default function Home() {
                 result={result}
                 isLoading={isLoading}
                 studentName={String(metadata.student_name || "")}
-                entryNumber={Number(metadata.entry_number) || 1}
+                entryName={String(metadata.entry_name || "")}
               />
             </div>
           )}
