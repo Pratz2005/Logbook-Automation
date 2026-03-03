@@ -221,9 +221,9 @@ export default function PreviewPanel({ result, isLoading, studentName, entryName
           </p> */}
         </div>
         <div className="flex gap-2">
-          {result!.s3_info?.presigned_url && (
+          {result!.storage_info?.presigned_url && (
             <a
-              href={result!.s3_info.presigned_url}
+              href={result!.storage_info.presigned_url}
               target="_blank"
               rel="noopener noreferrer"
               className="btn-secondary text-[11.5px]"
