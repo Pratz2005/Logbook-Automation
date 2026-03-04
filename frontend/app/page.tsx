@@ -229,6 +229,7 @@ export default function Home() {
         }}
       >
         <div
+          className="header-inner"
           style={{
             maxWidth: 1440,
             margin: "0 auto",
@@ -254,7 +255,7 @@ export default function Home() {
               <span className="font-display font-semibold text-[var(--paper)] text-[13.5px]" style={{ letterSpacing: "0.01em" }}>
                 NTU Logbook
               </span>
-              <span className="ml-2 text-[10.5px] font-light" style={{ color: "rgba(245,240,232,0.45)", letterSpacing: "0.04em" }}>
+              <span className="ml-2 text-[10.5px] font-light hidden sm:inline" style={{ color: "rgba(245,240,232,0.45)", letterSpacing: "0.04em" }}>
                 Generator
               </span>
             </div>
@@ -305,7 +306,7 @@ export default function Home() {
               </svg>
             </button>
             <button
-              className="btn-accent flex items-center gap-2 text-[12.5px]"
+              className="btn-accent flex items-center gap-2 text-[12.5px] hidden md:flex"
               style={{ padding: "7px 18px" }}
               onClick={handleGenerate}
               disabled={!canGenerate}
@@ -321,22 +322,22 @@ export default function Home() {
 
       {/* ── Main layout ── */}
       <div
+        className="main-layout-grid"
         style={{
           maxWidth: 1440,
           margin: "0 auto",
-          padding: "24px 24px",
+          padding: "24px",
           display: "grid",
           gridTemplateColumns: activeTab !== "history" ? "360px 1fr" : "1fr",
           gap: 20,
           minHeight: "calc(100vh - 52px)",
         }}
       >
-        {/* LEFT: Input panel */}
+        {/* LEFT: Input panel — on mobile only visible in "input" tab */}
         {(activeTab === "input" || activeTab === "preview") && (
           <div
             ref={inputRef}
-            className="section-card p-5 animate-fade-up h-fit"
-            style={{ position: "sticky", top: 72, maxHeight: "calc(100vh - 90px)", overflowY: "auto" }}
+            className={`section-card p-5 animate-fade-up h-fit panel-input-sticky${activeTab === "preview" ? " hidden md:block" : ""}`}
           >
             {error && (
               <div
@@ -373,7 +374,7 @@ export default function Home() {
               />
             </div>
 
-            <div className="mt-5">
+            <div className="mt-5 hidden md:block">
               <button
                 className="btn-primary w-full flex items-center justify-center gap-2"
                 onClick={handleGenerate}
@@ -388,8 +389,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* RIGHT: Preview / History */}
-        <div className="min-w-0">
+        {/* RIGHT: Preview / History — on mobile only visible in "preview"/"history" tabs */}
+        <div className={`min-w-0${activeTab === "input" ? " hidden md:block" : ""}`}>
           {activeTab === "history" ? (
             <div className="section-card p-5 animate-fade-up">
               <div className="flex items-center justify-between mb-5">
@@ -431,6 +432,31 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* ── Mobile sticky generate bar ── */}
+      {activeTab === "input" && (
+        <div
+          className="md:hidden fixed bottom-0 left-0 right-0 px-3 py-3"
+          style={{
+            background: "var(--paper-cool)",
+            borderTop: "1px solid var(--border)",
+            zIndex: 40,
+            boxShadow: "0 -4px 16px rgba(15,25,35,0.07)",
+          }}
+        >
+          <button
+            className="btn-accent w-full flex items-center justify-center gap-2"
+            style={{ padding: "12px 22px", fontSize: "13.5px" }}
+            onClick={handleGenerate}
+            disabled={!canGenerate}
+          >
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+              <path d="M6.5 1.5L8.5 5.5H12L9 8l1 4-3.5-2.5L3 12l1-4L1 5.5h3.5z" stroke="white" strokeWidth="1.2" strokeLinejoin="round" fill="none"/>
+            </svg>
+            {isLoading ? "Generating logbook…" : "Generate Logbook"}
+          </button>
+        </div>
+      )}
 
       {/* ── Footer ── */}
       <footer className="text-center py-5" style={{ borderTop: "1px solid var(--border)" }}>
