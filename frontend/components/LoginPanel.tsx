@@ -63,7 +63,7 @@ export default function LoginPanel({ onLogin }: Props) {
       // Set Supabase session from backend-issued token
       await supabase.auth.setSession({
         access_token: resp.access_token,
-        refresh_token: "",
+        refresh_token: resp.refresh_token,
       });
       onLogin(resp.profile);
     } catch (err: unknown) {

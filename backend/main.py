@@ -204,6 +204,11 @@ async def register(body: RegisterRequest):
 
     user_id = user_id_str
 
+    # sign_up() changes the client's auth state to the new user's session.
+    # Reset the PostgREST header back to service role key so RLS is bypassed.
+    _service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    supabase_admin.postgrest.auth(_service_key)
+
     # Create profile record
     supabase_admin.table("profiles").insert({
         "id": user_id,
@@ -224,6 +229,7 @@ async def register(body: RegisterRequest):
 
     return {
         "access_token": sign_in_resp.session.access_token,
+        "refresh_token": sign_in_resp.session.refresh_token,
         "user_id": user_id,
         "profile": {
             "matric_number": body.matric_number,

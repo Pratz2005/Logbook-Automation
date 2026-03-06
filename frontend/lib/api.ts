@@ -138,7 +138,7 @@ export async function registerUser(
   student_name: string,
   company: string,
   supervisor: string,
-): Promise<{ access_token: string; user_id: string; profile: UserProfile }> {
+): Promise<{ access_token: string; refresh_token: string; user_id: string; profile: UserProfile }> {
   return apiCall(
     "/api/auth/register",
     { method: "POST", body: JSON.stringify({ matric_number, password, student_name, company, supervisor }) },
