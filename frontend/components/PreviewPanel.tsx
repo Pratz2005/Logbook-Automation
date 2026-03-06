@@ -1,6 +1,6 @@
 "use client";
 
-import { GenerateResponse, downloadDocxFromBase64 } from "@/lib/api";
+import { GenerateResponse, downloadDocxFromBase64, downloadDocxFromUrl } from "@/lib/api";
 
 interface Props {
   result: GenerateResponse | null;
@@ -222,14 +222,19 @@ export default function PreviewPanel({ result, isLoading, studentName, entryName
         </div>
         <div className="flex gap-2">
           {result!.storage_info?.presigned_url && (
-            <a
-              href={result!.storage_info.presigned_url}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => {
+                const name = studentName?.replace(/\s+/g, "_") || "student";
+                const entry = entryName?.replace(/\s+/g, "_") || "entry";
+                downloadDocxFromUrl(
+                  result!.storage_info.presigned_url!,
+                  `Logbook_${name}_${entry}.docx`,
+                );
+              }}
               className="btn-secondary text-[11.5px]"
             >
-              S3 Link
-            </a>
+              Cloud Download
+            </button>
           )}
           <button onClick={handleDownload} className="btn-accent text-[12.5px] flex items-center gap-1.5">
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none">

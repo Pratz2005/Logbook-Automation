@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { HistoryEntry } from "@/lib/api";
+import { HistoryEntry, downloadDocxFromUrl } from "@/lib/api";
 
 interface Props {
   entries: HistoryEntry[];
@@ -103,10 +103,13 @@ export default function HistoryPanel({ entries, loading }: Props) {
                   </p>
                 )} */}
                 {entry.presigned_url && (
-                  <a
-                    href={entry.presigned_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() =>
+                      downloadDocxFromUrl(
+                        entry.presigned_url!,
+                        `Logbook_${entry.entry_name.replace(/\s+/g, "_")}.docx`,
+                      )
+                    }
                     className="btn-secondary inline-flex items-center gap-1.5 text-[11.5px]"
                   >
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -114,7 +117,7 @@ export default function HistoryPanel({ entries, loading }: Props) {
                       <path d="M1.5 9.5h9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
                     </svg>
                     Download .docx
-                  </a>
+                  </button>
                 )}
               </div>
             </div>

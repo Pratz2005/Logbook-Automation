@@ -188,28 +188,55 @@ def _center_tab(para, inches: float):
 def _build_header(section, logo_path: str):
     """
     Header (repeats on every page):
-      [NTU logo]  <TAB>  Biweekly Logbook Entry (bold, centered)
+      [NTU logo (left)] | [Biweekly Logbook Entry (centered, bold)]
       ─────────────────────────────────────────── (bottom rule)
+
+    Uses a 2-column borderless table so positioning is stable across
+    all Word / LibreOffice versions (tab-stop approach varies by renderer).
     """
-    header      = section.header
-    header_para = header.paragraphs[0]
-    header_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    header    = section.header
+    hdr_elem  = header._element
 
-    # Center tab at the midpoint of the text area
-    # A4 (8.27") − 2×1" margins = 6.27" → center at 3.135"
-    _center_tab(header_para, inches=3.14)
+    # ── 2-column table: [logo | title] ─────────────────────────────────
+    # A4 text area = 6.27"; logo column 1.8", title column 4.47"
+    tbl = header.add_table(rows=1, cols=2, width=Inches(6.27))
+    _border_none(tbl)
 
-    # NTU logo (inline image, left side)
+    logo_cell, title_cell = tbl.rows[0].cells[0], tbl.rows[0].cells[1]
+    logo_cell.width  = Inches(1.8)
+    title_cell.width = Inches(4.47)
+
+    # Left cell — NTU logo
+    lp = logo_cell.paragraphs[0]
+    lp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    lp.paragraph_format.space_before = Pt(0)
+    lp.paragraph_format.space_after  = Pt(0)
     if os.path.exists(logo_path):
-        logo_run = header_para.add_run()
-        logo_run.add_picture(logo_path, height=Inches(0.55))
+        lr = lp.add_run()
+        lr.add_picture(logo_path, height=Inches(0.45))
 
-    # Tab to center, then bold title
-    header_para.add_run("\t")
-    _run(header_para, "Biweekly Logbook Entry", bold=True, size=11)
+    # Right cell — title, vertically and horizontally centred
+    tp = title_cell.paragraphs[0]
+    tp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    tp.paragraph_format.space_before = Pt(0)
+    tp.paragraph_format.space_after  = Pt(0)
+    _run(tp, "Biweekly Logbook Entry", bold=True, size=11)
 
-    # Horizontal rule below header
-    _para_bottom_border(header_para)
+    # Vertically centre the title within the cell
+    tc_pr = title_cell._tc.get_or_add_tcPr()
+    va = OxmlElement("w:vAlign")
+    va.set(qn("w:val"), "center")
+    tc_pr.append(va)
+
+    # Move the table to the TOP of the header (add_table appends to the end)
+    hdr_elem.remove(tbl._tbl)
+    hdr_elem.insert(0, tbl._tbl)
+
+    # ── Horizontal rule paragraph (already exists as default header para) ──
+    rule_para = header.paragraphs[0]
+    rule_para.paragraph_format.space_before = Pt(0)
+    rule_para.paragraph_format.space_after  = Pt(0)
+    _para_bottom_border(rule_para)
 
 
 def _build_footer(section):

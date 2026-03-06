@@ -194,13 +194,11 @@ export async function fetchHistory(): Promise<{ entries: HistoryEntry[]; count: 
   return apiCall<{ entries: HistoryEntry[]; count: number }>("/api/history");
 }
 
-// ── DOCX download helper ──────────────────────────────────────────
+// ── DOCX download helpers ─────────────────────────────────────────
 
-export function downloadDocxFromBase64(base64: string, filename: string): void {
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-  const blob = new Blob([bytes], {
-    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  });
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+function _triggerBlobDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -209,4 +207,25 @@ export function downloadDocxFromBase64(base64: string, filename: string): void {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+export function downloadDocxFromBase64(base64: string, filename: string): void {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  _triggerBlobDownload(new Blob([bytes], { type: DOCX_MIME }), filename);
+}
+
+/**
+ * Fetch a remote DOCX URL (e.g. Supabase signed URL) and trigger a named
+ * download. Using fetch+blob instead of <a href target="_blank"> ensures
+ * the browser always downloads the file rather than trying to render it,
+ * and gives it the correct filename regardless of the URL path.
+ */
+export async function downloadDocxFromUrl(url: string, filename: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const blob = await res.blob();
+  _triggerBlobDownload(
+    new Blob([blob], { type: DOCX_MIME }),
+    filename,
+  );
 }

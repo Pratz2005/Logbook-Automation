@@ -248,6 +248,44 @@ FOOTER_COLOUR = RGBColor(0x80, 0x80, 0x80)  # Footer text
 | Missing AWS credentials | `RuntimeError` with instructive message |
 | Frontend submission < 2s apart | 429 from backend + debounce in `lib/api.ts` |
 | Entry number > 99 | Pydantic `Field(ge=1, le=99)` validation |
+| Auth state pollutes DB queries | Use two separate Supabase clients (see below) |
+| User profile missing after auth user exists | Cleanup SQL deleted profile; re-insert manually or have user re-register |
+
+---
+
+## Supabase Client Architecture (CRITICAL — do not change)
+
+Two separate clients are initialised at startup in `backend/main.py`:
+
+```python
+supabase_admin = _make_client()  # auth operations ONLY
+supabase_db    = _make_client()  # DB table operations ONLY
+```
+
+**Why this matters:** `supabase-py` auth calls (`sign_up()`, `sign_in_with_password()`) mutate the client's internal session state, which overwrites the PostgREST Authorization header. If the same client is used for both auth and DB, subsequent `table()` calls run with the signed-in user's JWT instead of the service role key — RLS then silently filters out other users' rows, returning empty data with no error.
+
+**Rules:**
+- `supabase_admin` — ONLY for: `auth.sign_up()`, `auth.sign_in_with_password()`, `auth.admin.*`, `auth.get_user()`
+- `supabase_db` — ONLY for: `table(...).select/insert/update/delete`
+- NEVER call `supabase_db.auth.*` — doing so will corrupt its PostgREST state
+- NEVER call `supabase_admin.table(...)` — its auth state may be a user's token, not service role
+
+---
+
+## Supabase Configuration Requirements
+
+- **"Confirm email" must be OFF** — users register with fake `@ntu.edu.sg` addresses that don't exist. Leaving this ON causes every registration to send a confirmation email that bounces, which causes Supabase to throttle the project and return "User not allowed" 403 errors on subsequent auth calls.
+- **"Allow new users to sign up" must be ON** (Sign In / Providers → Email)
+- **Service role key** (not anon key) must be in `SUPABASE_SERVICE_ROLE_KEY` env var — the anon key cannot call admin APIs
+
+---
+
+## Auth Flow Notes
+
+- Registration uses `auth.sign_up()` (not `auth.admin.create_user()`) because the admin create endpoint returns "User not allowed" when Supabase's email bounce throttling is active
+- After registration, backend calls `sign_in_with_password()` immediately and returns both `access_token` AND `refresh_token` to the frontend
+- Frontend must call `supabase.auth.setSession({ access_token, refresh_token })` with the real refresh token — passing an empty string means the session cannot be renewed and the user gets silently logged out after ~1 hour
+- `get_profile` uses `.limit(1)` not `.maybe_single()` — `maybe_single()` returns 406 if duplicate rows exist, which crashes with `AttributeError: 'NoneType' object has no attribute 'data'`
 
 ---
 
