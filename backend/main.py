@@ -177,19 +177,32 @@ async def register(body: RegisterRequest):
     """
     email = f"{body.matric_number}@ntu.edu.sg"
     try:
-        auth_resp = supabase_admin.auth.admin.create_user({
+        auth_resp = supabase_admin.auth.sign_up({
             "email": email,
             "password": body.password,
-            "email_confirm": True,  # skip email verification for closed friend group
         })
+        if not auth_resp.user:
+            raise HTTPException(status_code=400, detail="Registration failed: no user returned.")
+    except HTTPException:
+        raise
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"Supabase create_user failed for {email}: {error_msg}")
+        logger.error(f"Supabase sign_up failed for {email}: {error_msg}")
         if "already" in error_msg.lower() or "unique" in error_msg.lower():
             raise HTTPException(status_code=409, detail="Matric number already registered.")
         raise HTTPException(status_code=400, detail=f"Registration failed: {error_msg}")
 
-    user_id = str(auth_resp.user.id)
+    user_id_str = str(auth_resp.user.id)
+
+    # Auto-confirm email so user can sign in immediately (closed friend-group app)
+    try:
+        supabase_admin.auth.admin.update_user_by_id(
+            user_id_str, {"email_confirm": True}
+        )
+    except Exception as e:
+        logger.warning(f"Could not auto-confirm email for {email}: {e}")
+
+    user_id = user_id_str
 
     # Create profile record
     supabase_admin.table("profiles").insert({
