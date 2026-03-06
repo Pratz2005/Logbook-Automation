@@ -272,10 +272,10 @@ async def login(body: LoginRequest):
 async def get_profile(request: Request):
     """Return the authenticated user's profile."""
     user_info = await get_current_user(request)
-    result = supabase_admin.table("profiles").select("*").eq("id", user_info["user_id"]).maybe_single().execute()
-    if not result.data:
+    result = supabase_admin.table("profiles").select("*").eq("id", user_info["user_id"]).limit(1).execute()
+    if not result or not result.data:
         raise HTTPException(status_code=404, detail="Profile not found.")
-    return result.data
+    return result.data[0]
 
 
 @app.put("/api/profile")
