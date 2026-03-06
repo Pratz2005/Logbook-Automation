@@ -134,13 +134,13 @@ def parseRawNotes(raw_text: str, default_year: int = 2026) -> list[dict]:
             flush()
             current_date = parsed_date
             if remainder:
-                # Multiple tasks on same line separated by commas/semicolons
-                tasks = [t.strip() for t in re.split(r"[,;]", remainder) if t.strip()]
+                # Multiple tasks on same line separated by full stops
+                tasks = [t.strip() for t in re.split(r"\.", remainder) if t.strip()]
                 current_tasks.extend(tasks)
         else:
             # Continuation line — add as task to current date
             if current_date:
-                tasks = [t.strip() for t in re.split(r"[,;]", clean) if t.strip()]
+                tasks = [t.strip() for t in re.split(r"\.", clean) if t.strip()]
                 current_tasks.extend(tasks)
             # If no current date, it may be a header — skip silently
 

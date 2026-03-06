@@ -44,11 +44,11 @@ MOCK_NOTES_LB2 = """
 """
 
 MOCK_NOTES_LB3 = """
-9th Feb - Produced demo video for client presentation, set up GitLab CI/CD pipeline
-10th Feb - Configured automated testing in CI/CD, fixed pipeline failures
+9th Feb - Produced demo video for client presentation. set up GitLab CI/CD pipeline
+10th Feb - Configured automated testing in CI/CD. fixed pipeline failures
 11th Feb - Annual Leave
 12th Feb - Worked on database schema optimization
-13th Feb - Performance testing of optimized queries, documented findings
+13th Feb - Performance testing of optimized queries. documented findings
 """
 
 MOCK_METADATA = {
@@ -111,7 +111,7 @@ def test_parse_notes_with_leave():
 
 def test_parse_notes_lb3():
     print("\n" + "="*60)
-    print("TEST 1c: parseRawNotes — LB3 (comma-separated tasks)")
+    print("TEST 1c: parseRawNotes — LB3 (full-stop-separated tasks)")
     print("="*60)
 
     entries = parseRawNotes(MOCK_NOTES_LB3)
@@ -119,11 +119,11 @@ def test_parse_notes_lb3():
     for e in entries:
         print(f"    {e['date_str']}: tasks={e['tasks']}, leave={e['is_leave']}")
 
-    # 9th Feb should have 2 tasks (split on comma)
+    # 9th Feb should have 2 tasks (split on full stop)
     feb9 = next((e for e in entries if e["date"].day == 9), None)
     assert feb9 is not None, "Should parse 9th Feb entry"
-    assert len(feb9["tasks"]) >= 2, "Should split comma-separated tasks"
-    print("  PASS: Comma-separated tasks parsed correctly")
+    assert len(feb9["tasks"]) >= 2, "Should split full-stop-separated tasks"
+    print("  PASS: Full-stop-separated tasks parsed correctly")
 
 
 def test_parse_notes_empty():

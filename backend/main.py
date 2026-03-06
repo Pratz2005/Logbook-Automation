@@ -29,6 +29,7 @@ from supabase import create_client, Client
 
 from orchestrator import orchestrate, validate_inputs
 from functions.storage_utils import get_signed_url
+from functions.build_docx import buildDocx
 
 load_dotenv()
 
@@ -389,6 +390,74 @@ async def get_history(request: Request):
         entries.append({**entry, "presigned_url": presigned_url})
 
     return {"entries": entries, "count": len(entries)}
+
+
+# ── History DOCX Re-download ───────────────────────────────────────
+
+@app.get("/api/history/{entry_id}/download")
+async def download_history_entry(entry_id: str, request: Request):
+    """
+    Rebuild and return the DOCX for a past history entry.
+
+    Regenerates the file on-the-fly from the stored section text and metadata
+    so the download always uses the latest buildDocx template (correct header,
+    correct formatting) regardless of when the entry was originally generated.
+    """
+    user_info = await get_current_user(request)
+
+    entry_result = (
+        supabase_db.table("logbook_entries")
+        .select("*")
+        .eq("id", entry_id)
+        .eq("user_id", user_info["user_id"])
+        .limit(1)
+        .execute()
+    )
+    if not entry_result.data:
+        raise HTTPException(status_code=404, detail="Entry not found.")
+    entry = entry_result.data[0]
+
+    profile_result = (
+        supabase_db.table("profiles")
+        .select("student_name, matric_number, company, supervisor")
+        .eq("id", user_info["user_id"])
+        .limit(1)
+        .execute()
+    )
+    if not profile_result.data:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    profile = profile_result.data[0]
+
+    metadata = {
+        "student_name": profile["student_name"],
+        "matric_number": profile["matric_number"],
+        "company":       profile["company"],
+        "supervisor":    profile["supervisor"],
+        "entry_name":    entry["entry_name"],
+        "period_start":  entry["period_start"],
+        "period_end":    entry["period_end"],
+        "submission_date": entry["submission_date"],
+    }
+
+    docx_bytes = buildDocx(
+        section_a=entry["section_a"],
+        work_rows=entry["section_b_json"],
+        section_c=entry["section_c"],
+        metadata=metadata,
+    )
+
+    safe_name  = profile["student_name"].replace(" ", "_")
+    safe_entry = entry["entry_name"].replace(" ", "_")
+    filename   = f"Logbook_{safe_name}_{safe_entry}.docx"
+
+    return Response(
+        content=docx_bytes,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument"
+            ".wordprocessingml.document"
+        ),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ── Health ─────────────────────────────────────────────────────────

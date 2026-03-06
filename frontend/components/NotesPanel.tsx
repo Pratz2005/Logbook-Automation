@@ -62,17 +62,17 @@ export default function NotesPanel({
           )}
         </div>
         <p className="text-[11.5px] text-[var(--ink-muted)] mb-2">
-          Paste your raw notes. Each line should start with a date. Separate multiple tasks with commas.
+          Paste your raw notes. Each line should start with a date. Separate multiple tasks with full stops.
         </p>
         <textarea
           className="input-field font-mono"
           rows={10}
           style={{ fontSize: "12px", lineHeight: 1.7 }}
-          placeholder={`9th Feb - produced demo video for client presentation, set up GitLab CI/CD pipeline
-10th Feb - configured automated testing in CI/CD, fixed pipeline failures
+          placeholder={`9th Feb - produced demo video for client presentation. set up GitLab CI/CD pipeline
+10th Feb - configured automated testing in CI/CD. fixed pipeline failures
 11th Feb - Annual Leave
 12th Feb - worked on database schema optimization
-13th Feb - performance testing of optimised queries, documented findings`}
+13th Feb - performance testing of optimised queries. documented findings`}
           value={rawNotes}
           onChange={(e) => onRawNotesChange(e.target.value)}
         />
@@ -80,9 +80,9 @@ export default function NotesPanel({
         {/* Format hints */}
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           {[
-            "9th Feb – tasks",
-            "9/2/2026 – tasks",
-            "Feb 9 – tasks",
+            "9th Feb – task. task",
+            "9/2/2026 – task. task",
+            "Feb 9 – task. task",
             "Leave / Holiday",
           ].map(hint => (
             <span key={hint} className="tag tag-neutral font-mono" style={{ fontSize: "10px" }}>

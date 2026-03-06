@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { HistoryEntry, downloadDocxFromUrl } from "@/lib/api";
+import { HistoryEntry, downloadHistoryDocx } from "@/lib/api";
 
 interface Props {
   entries: HistoryEntry[];
@@ -102,11 +102,11 @@ export default function HistoryPanel({ entries, loading }: Props) {
                     {entry.token_usage.total_tokens} tokens · ≈${entry.token_usage.estimated_cost_usd.toFixed(4)}
                   </p>
                 )} */}
-                {entry.presigned_url && (
+                {entry.id && (
                   <button
                     onClick={() =>
-                      downloadDocxFromUrl(
-                        entry.presigned_url!,
+                      downloadHistoryDocx(
+                        entry.id,
                         `Logbook_${entry.entry_name.replace(/\s+/g, "_")}.docx`,
                       )
                     }

@@ -224,8 +224,22 @@ export async function downloadDocxFromUrl(url: string, filename: string): Promis
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   const blob = await res.blob();
-  _triggerBlobDownload(
-    new Blob([blob], { type: DOCX_MIME }),
-    filename,
-  );
+  _triggerBlobDownload(new Blob([blob], { type: DOCX_MIME }), filename);
+}
+
+/**
+ * Re-build and download the DOCX for a history entry via the backend.
+ * The backend regenerates the file using the latest buildDocx template,
+ * so this always produces a correctly formatted document regardless of
+ * when the entry was originally generated.
+ */
+export async function downloadHistoryDocx(entryId: string, filename: string): Promise<void> {
+  const token = await getAccessToken();
+  if (!token) throw new Error("Not authenticated. Please sign in.");
+  const res = await fetch(`${API_BASE}/api/history/${entryId}/download`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const blob = await res.blob();
+  _triggerBlobDownload(new Blob([blob], { type: DOCX_MIME }), filename);
 }
