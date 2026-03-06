@@ -36,6 +36,7 @@ export default function LoginPanel({ onLogin }: Props) {
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/profile`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
+      if (res.status === 404) throw new Error("Account not fully set up. Please register again.");
       if (!res.ok) throw new Error("Could not load profile.");
       const profile: UserProfile = await res.json();
       onLogin(profile);

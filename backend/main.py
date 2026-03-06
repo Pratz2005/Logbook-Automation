@@ -56,20 +56,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Supabase admin client ──────────────────────────────────────────
-def get_supabase_admin() -> Client:
+# ── Supabase clients ───────────────────────────────────────────────
+# Two separate clients to prevent auth state from polluting DB queries:
+#   supabase_admin — auth operations only (sign_up, sign_in, admin calls)
+#   supabase_db    — database operations only (table select/insert/update)
+#                    never used for auth, so its PostgREST header stays as
+#                    the service role key and always bypasses RLS correctly.
+def _make_client() -> Client:
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
         raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.")
     return create_client(url, key)
 
-# Initialise once at startup (crashes fast if env vars are missing)
 try:
-    supabase_admin: Client = get_supabase_admin()
+    supabase_admin: Client = _make_client()
+    supabase_db: Client = _make_client()
 except RuntimeError as e:
     logger.warning(f"Supabase not configured: {e}. Auth endpoints will fail.")
     supabase_admin = None  # type: ignore
+    supabase_db = None  # type: ignore
 
 # ── JWT / Auth helper ──────────────────────────────────────────────
 async def get_current_user(request: Request) -> dict:
@@ -204,13 +210,8 @@ async def register(body: RegisterRequest):
 
     user_id = user_id_str
 
-    # sign_up() changes the client's auth state to the new user's session.
-    # Reset the PostgREST header back to service role key so RLS is bypassed.
-    _service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-    supabase_admin.postgrest.auth(_service_key)
-
     # Create profile record
-    supabase_admin.table("profiles").insert({
+    supabase_db.table("profiles").insert({
         "id": user_id,
         "matric_number": body.matric_number,
         "student_name": body.student_name,
@@ -254,7 +255,7 @@ async def login(body: LoginRequest):
         raise HTTPException(status_code=401, detail="Invalid matric number or password.")
 
     user_id = str(resp.user.id)
-    profile_resp = supabase_admin.table("profiles").select("*").eq("id", user_id).maybe_single().execute()
+    profile_resp = supabase_db.table("profiles").select("*").eq("id", user_id).maybe_single().execute()
     profile = profile_resp.data or {}
 
     logger.info(f"User logged in: {body.matric_number}")
@@ -272,7 +273,7 @@ async def login(body: LoginRequest):
 async def get_profile(request: Request):
     """Return the authenticated user's profile."""
     user_info = await get_current_user(request)
-    result = supabase_admin.table("profiles").select("*").eq("id", user_info["user_id"]).limit(1).execute()
+    result = supabase_db.table("profiles").select("*").eq("id", user_info["user_id"]).limit(1).execute()
     if not result or not result.data:
         raise HTTPException(status_code=404, detail="Profile not found.")
     return result.data[0]
@@ -285,7 +286,7 @@ async def update_profile(request: Request, body: UpdateProfileRequest):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         return {"success": True}
-    supabase_admin.table("profiles").update(updates).eq("id", user_info["user_id"]).execute()
+    supabase_db.table("profiles").update(updates).eq("id", user_info["user_id"]).execute()
     return {"success": True}
 
 
@@ -323,7 +324,7 @@ async def generate_logbook(request_body: GenerateRequest, request: Request):
 
         # Save entry to Supabase DB
         try:
-            supabase_admin.table("logbook_entries").insert({
+            supabase_db.table("logbook_entries").insert({
                 "user_id": user_info["user_id"],
                 "entry_name": req_dict["metadata"]["entry_name"],
                 "period_start": req_dict["metadata"]["period_start"],
@@ -370,7 +371,7 @@ async def get_history(request: Request):
     user_info = await get_current_user(request)
 
     result = (
-        supabase_admin.table("logbook_entries")
+        supabase_db.table("logbook_entries")
         .select(
             "id, entry_name, period_start, period_end, submission_date, "
             "section_a, section_c, storage_path, token_usage, created_at"
