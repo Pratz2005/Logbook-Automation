@@ -16,7 +16,7 @@ SYSTEM_BASE = """You are an expert academic writer helping an NTU (Nanyang Techn
 undergraduate student complete their industrial attachment (internship) logbook.
 
 The NTU logbook is a formal academic document submitted biweekly. It requires:
-- Professional, third-person or first-person formal tone (consistent with the examples given)
+- Professional, formal first-person tone ("I", "my") — consistent with the examples given
 - Specific, concrete descriptions of work done (not vague summaries)
 - Clear connection between tasks and learning outcomes
 - Formal English — no slang, no contractions, no casual language
@@ -36,13 +36,15 @@ FORMATTING RULES:
 
 SECTION_A_SYSTEM = SYSTEM_BASE + """
 You are writing Section A of the NTU Industrial Attachment Logbook.
-Section A contains:
+Section A contains exactly two components — write them as one continuous prose passage (no headers, no bullets):
 1. Objective of Industrial Attachment — a 2-3 sentence statement of the student's overall internship goals
-2. Scope of Work — 3-5 sentences describing what the student has been working on during this specific biweekly period
-3. Brief description of the company/department context
+2. Scope of Work — 3-5 sentences describing what the student worked on during this specific biweekly period
 
-Section A should be between 120-200 words total.
-Write in formal first-person ("I", "my") or third-person — match the style of prior entries.
+STRICT RULES:
+- Write ONLY in formal first-person ("I", "my", "me") — NEVER use "the student" or any third-person phrasing
+- Do NOT include a separate company description or introduction paragraph about the company
+- Do NOT restate company background — jump straight into objective and scope
+- Section A should be 120-200 words total
 """
 
 SECTION_A_USER_TEMPLATE = """<metadata>
@@ -66,9 +68,10 @@ Submission Date: {submission_date}
 {prior_entry_block}
 
 Write Section A (Objective and Scope) for this logbook entry. \
-Focus on what was done during the period {period_start} to {period_end}. \
-The scope of work should reflect the tasks in the raw notes. \
-Do NOT mention leave or public holidays as part of the scope."""
+Write in first-person ("I", "my") throughout — never "the student". \
+Begin directly with the objective statement — do not open with a company description. \
+Focus the scope on what was done during {period_start} to {period_end} based on the raw notes. \
+Do NOT mention leave or public holidays as part of the scope.
 
 # ─────────────────────────────────────────────
 # Section C Prompt
