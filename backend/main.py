@@ -184,6 +184,7 @@ async def register(body: RegisterRequest):
         })
     except Exception as e:
         error_msg = str(e)
+        logger.error(f"Supabase create_user failed for {email}: {error_msg}")
         if "already" in error_msg.lower() or "unique" in error_msg.lower():
             raise HTTPException(status_code=409, detail="Matric number already registered.")
         raise HTTPException(status_code=400, detail=f"Registration failed: {error_msg}")
